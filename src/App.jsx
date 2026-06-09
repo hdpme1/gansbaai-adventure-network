@@ -1,29 +1,20 @@
-import { useEffect, useState } from 'react'
-import { supabase } from './lib/supabase'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import LandingPage    from './pages/LandingPage'
+import RegisterPage   from './pages/RegisterPage'
+import CheckpointPage from './pages/CheckpointPage'
+import CompletePage   from './pages/CompletePage'
+import BlockedPage    from './pages/BlockedPage'
 
-function App() {
-  const [status, setStatus] = useState('Checking connection...')
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ error }) => {
-      if (error) {
-        setStatus('❌ Connection failed — check your env vars')
-      } else {
-        setStatus('✅ Supabase connected successfully')
-      }
-    })
-  }, [])
-
+export default function App() {
   return (
-    <div>
-      <h1>Gansbaai Adventure Network</h1>
-      <h2>Phase 0 — Connection test</h2>
-
-      <div>
-        <p>{status}</p>
-      </div>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/"        element={<LandingPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/c/:slug" element={<CheckpointPage />} />
+        <Route path="/complete" element={<CompletePage />} />
+        <Route path="/blocked"  element={<BlockedPage />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
-
-export default App
