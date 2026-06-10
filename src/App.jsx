@@ -4,6 +4,8 @@ import RegisterPage   from './pages/RegisterPage'
 import CheckpointPage from './pages/CheckpointPage'
 import CompletePage   from './pages/CompletePage'
 import BlockedPage    from './pages/BlockedPage'
+import AdminPage      from './pages/AdminPage'
+import PartnerPage    from './pages/PartnerPage'
 
 export default function App() {
   return (
@@ -14,6 +16,8 @@ export default function App() {
         <Route path="/c/:slug" element={<CheckpointPage />} />
         <Route path="/complete" element={<CompletePage />} />
         <Route path="/blocked"  element={<BlockedPage />} />
+        <Route path="/admin"   element={<AdminPage />} />
+        <Route path="/partner/:slug" element={<PartnerPage />} />
       </Routes>
     </BrowserRouter>
   )

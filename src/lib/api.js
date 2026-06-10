@@ -18,8 +18,13 @@ export function getSession(sessionId) {
     headers: { 'apikey': KEY }
   }).then(r => r.json())
 }
-  // Add this to the bottom of src/lib/api.js
 
 export function sendCompletion(sessionId) {
   return post('send-completion', { session_id: sessionId })
 }
+
+export const getAdminStats = (password) =>
+  post('get-admin-stats', { password, adventure_slug: 'lost-shark-logbook' })
+
+export const getPartnerStats = (slug, pin) =>
+  post('get-partner-stats', { partner_slug: slug, pin })

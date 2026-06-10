@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getSession, validateCheckpoint } from '../lib/api'
 import GPSGate from '../components/GPSGate'
 import { getSession, validateCheckpoint, sendCompletion } from '../lib/api'
 
