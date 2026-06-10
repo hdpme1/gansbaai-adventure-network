@@ -18,7 +18,8 @@ export default function RegisterPage() {
       setError('Please fill in all fields'); return
     }
     setLoading(true); setError('')
-    const data = await createSession({ ...form, adventure_slug: 'lost-shark-logbook' })
+    const adventureSlug = new URLSearchParams(window.location.search).get('adventure') || 'lost-shark-logbook'
+    const data = await createSession({ ...form, adventure_slug: adventureSlug })
     if (data.error) { setError(data.error); setLoading(false); return }
     localStorage.setItem('session_id', data.session_id)
     navigate('/c/' + data.current_checkpoint.slug)
