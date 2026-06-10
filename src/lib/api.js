@@ -18,4 +18,8 @@ export function getSession(sessionId) {
     headers: { 'apikey': KEY }
   }).then(r => r.json())
 }
-  
+  // Add this to the bottom of src/lib/api.js
+
+export function sendCompletion(sessionId) {
+  return post('send-completion', { session_id: sessionId })
+}

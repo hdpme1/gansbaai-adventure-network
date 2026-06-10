@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getSession, validateCheckpoint } from '../lib/api'
 import GPSGate from '../components/GPSGate'
+import { getSession, validateCheckpoint, sendCompletion } from '../lib/api'
 
 export default function CheckpointPage() {
   const { slug }    = useParams()
@@ -31,7 +32,12 @@ export default function CheckpointPage() {
       answer, player_lat: coords.lat, player_lng: coords.lng
     })
     setLoading(false)
-    if (data.success && data.is_complete) { navigate('/complete'); return }
+    if (data.success && data.is_complete) {
+      const sid = localStorage.getItem('session_id')
+      sendCompletion(sid).catch(err => console.error('Email error:', err))
+      navigate('/complete')
+      return
+    }
     if (data.success) {
       setResult({ ok: true, message: data.next_clue, next: data.next_checkpoint?.slug })
     } else {
