@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 function haversine(lat1, lng1, lat2, lng2) {
   const R = 6371000
@@ -9,9 +9,16 @@ function haversine(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-export default function GPSGate({ checkpoint, onReady }) {
+export default function GPSGate({ checkpoint, onReady, autoRequest = false }) {
   const [status, setStatus]     = useState('idle')
   const [distance, setDistance] = useState(null)
+
+  // Auto-request GPS when component mounts with autoRequest=true
+  useEffect(() => {
+    if (autoRequest && status === 'idle') {
+      requestGPS()
+    }
+  }, [autoRequest])
 
   function requestGPS() {
     setStatus('locating')

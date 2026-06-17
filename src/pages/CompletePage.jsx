@@ -2,24 +2,22 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession } from '../lib/api'
 
-const THEME = {
-  bg: '#0a0a0a',
-  card: '#111',
-  accent: '#C8953A',
-  success: '#1D9E75',
-  text: '#ffffff',
-  textMuted: '#888',
-  border: '#222'
+// ─── Theme ─────────────────────────────────────────────────────────────────────
+const T = {
+  bg:           '#0a0a0a',
+  surface:      '#111111',
+  border:       '#1f1f1f',
+  surfaceAlt:   '#1a1a1a',
+  text:         '#ffffff',
+  muted:        '#888888',
+  faint:        '#444444',
+  accent:       '#C8953A',
+  accentDim:    '#7a5a22',
+  success:      '#1D9E75',
+  successBg:    '#052e16',
+  successBorder:'#166534',
+  successText:  '#86efac',
 }
-
-const REWARDS = [
-  { name: 'Gansbaai Coffee Company', reward: 'Free coffee with any purchase' },
-  { name: 'Blue Goose Restaurant', reward: 'Free dessert with any main meal' },
-  { name: 'Anchor and Ace', reward: '10% off your total bill' },
-  { name: 'Gansbaai Bakhuis', reward: 'Free pastry with any hot drink' },
-  { name: 'Coffee On The Rocks', reward: 'Free apple crumble with coffee' },
-  { name: 'Danger Point Lighthouse', reward: 'Free entry for certificate holders' },
-]
 
 function formatTime(minutes) {
   if (minutes < 60) return minutes + ' min'
@@ -31,86 +29,126 @@ function formatTime(minutes) {
 export default function CompletePage() {
   const navigate = useNavigate()
   const [session, setSession] = useState(null)
+  const [copied, setCopied]   = useState(null)
 
   useEffect(() => {
     const sid = localStorage.getItem('session_id')
-    if (!sid) {
-      navigate('/')
-      return
-    }
+    if (!sid) { navigate('/'); return }
     getSession(sid).then(data => {
-      if (data.status !== 'COMPLETE') {
-        navigate('/')
-        return
-      }
+      if (data.status !== 'COMPLETE') { navigate('/'); return }
       setSession(data)
     })
-  }, [navigate])
+  }, [])
+
+  async function copyCode(code) {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(code)
+      setTimeout(() => setCopied(null), 2000)
+    } catch {
+      // Clipboard not available on some mobile browsers — silent fail
+    }
+  }
 
   if (!session) return null
 
-  const mins = Math.round((Date.now() - new Date(session.started_at)) / 60000)
+  const mins    = Math.round((Date.now() - new Date(session.started_at)) / 60000)
+  const rewards = session.rewards || []
 
   return (
-    <div style={{ minHeight: '100vh', padding: '32px 24px', maxWidth: '480px', margin: '0 auto', background: THEME.bg, color: THEME.text }}>
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <div style={{ fontSize: '72px', marginBottom: '16px' }}>🏆</div>
-        <h1 style={{ fontSize: '28px', fontWeight: '600', marginBottom: '8px' }}>
-          Adventure Complete!
+    <div style={{ minHeight: '100vh', padding: '32px 24px',
+      maxWidth: '480px', margin: '0 auto' }}>
+
+      {/* ── Header ── */}
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ fontSize: '52px', marginBottom: '16px' }}>🏆</div>
+        <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 6px' }}>
+          Adventure complete!
         </h1>
-        <p style={{ color: THEME.textMuted }}>You solved the Lost Shark Logbook</p>
+        <p style={{ color: T.muted, fontSize: '14px', margin: 0 }}>
+          You solved {session.adventure?.name ? `the ${session.adventure.name}` : 'the adventure'}
+        </p>
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
-        {[['Points', session.total_points], ['Time', formatTime(mins)]].map(([label, value]) => (
-          <div key={label} style={{
-            flex: 1,
-            background: THEME.card,
-            border: `1px solid ${THEME.border}`,
-            borderRadius: '12px',
-            padding: '20px',
-            textAlign: 'center'
-          }}>
-            <div style={{ fontSize: '28px', fontWeight: '600', color: THEME.success }}>{value}</div>
-            <div style={{ fontSize: '13px', color: THEME.textMuted, marginTop: '4px' }}>{label}</div>
+      {/* ── Stats ── */}
+      <div style={{ display: 'flex', gap: '14px', marginBottom: '24px' }}>
+        {[['Points', session.total_points], ['Time', formatTime(mins)]].map(([l, v]) => (
+          <div key={l} style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`,
+            borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
+            <div style={{ fontSize: '24px', fontWeight: '600' }}>{v}</div>
+            <div style={{ fontSize: '12px', color: T.faint, marginTop: '4px' }}>{l}</div>
           </div>
         ))}
       </div>
 
-      <div style={{
-        background: '#052e16',
-        border: '1px solid #166534',
-        borderRadius: '12px',
-        padding: '20px',
-        marginBottom: '32px'
-      }}>
-        <p style={{ color: '#86efac', lineHeight: '1.7' }}>
-          The Captain was never missing. He simply found something worth staying for.
-          The sharks of Dyer Island became his family — and Gansbaai, his home.
-          The logbook is complete.
-        </p>
-      </div>
+      {/* ── Story conclusion ── */}
+      {session.adventure?.story_outro && (
+        <div style={{ background: T.successBg, border: `1px solid ${T.successBorder}`,
+          borderRadius: '10px', padding: '14px', marginBottom: '28px' }}>
+          <p style={{ color: T.successText, fontSize: '13px', lineHeight: '1.65', margin: 0 }}>
+            {session.adventure.story_outro}
+          </p>
+        </div>
+      )}
 
-      <h2 style={{ fontSize: '18px', marginBottom: '8px' }}>Your Rewards</h2>
-      <p style={{ color: THEME.textMuted, marginBottom: '20px' }}>
-        Show this screen (or your email) at any of these partners:
+      {/* ── Reward codes ── */}
+      <p style={{ fontSize: '11px', fontWeight: '700', color: T.accent, letterSpacing: '.1em',
+        textTransform: 'uppercase', margin: '0 0 4px' }}>
+        Your rewards
+      </p>
+      <p style={{ color: T.muted, fontSize: '13px', margin: '0 0 16px' }}>
+        Show your unique code at each business to claim your reward.
       </p>
 
-      {REWARDS.map(r => (
-        <div key={r.name} style={{
-          background: THEME.card,
-          border: `1px solid ${THEME.border}`,
-          borderRadius: '12px',
-          padding: '16px',
-          marginBottom: '12px'
-        }}>
-          <p style={{ fontWeight: '500', marginBottom: '4px' }}>{r.name}</p>
-          <p style={{ fontSize: '14px', color: THEME.textMuted }}>{r.reward}</p>
+      {rewards.length === 0 && (
+        <p style={{ color: T.faint, fontSize: '13px' }}>No rewards assigned for this adventure.</p>
+      )}
+
+      {rewards.map(r => (
+        <div key={r.code} style={{ background: T.surface, border: `1px solid ${T.border}`,
+          borderRadius: '10px', padding: '14px 16px', marginBottom: '10px' }}>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between',
+            alignItems: 'flex-start', marginBottom: '10px' }}>
+            <div>
+              <p style={{ fontSize: '13px', fontWeight: '600', margin: '0 0 2px' }}>
+                {r.partner?.name}
+              </p>
+              <p style={{ fontSize: '12px', color: T.muted, margin: 0 }}>
+                {r.partner?.reward_description}
+              </p>
+            </div>
+            {r.claimed_at && (
+              <span style={{ fontSize: '10px', fontWeight: '700', color: T.success,
+                background: T.successBg, padding: '3px 8px', borderRadius: '4px',
+                whiteSpace: 'nowrap', marginLeft: '12px', letterSpacing: '.05em' }}>
+                REDEEMED
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+            <div style={{ flex: 1, background: T.surfaceAlt, borderRadius: '8px',
+              padding: '10px 14px', border: `1px solid ${T.border}` }}>
+              <span style={{ fontFamily: 'monospace', fontSize: '18px', fontWeight: '700',
+                letterSpacing: '.12em', color: T.accent }}>
+                {r.code}
+              </span>
+            </div>
+            <button onClick={() => copyCode(r.code)}
+              style={{ background: copied === r.code ? T.success : T.surfaceAlt,
+                border: `1px solid ${T.border}`, borderRadius: '8px',
+                color: copied === r.code ? '#fff' : T.muted,
+                padding: '10px 14px', fontSize: '12px', cursor: 'pointer',
+                transition: 'all .15s', fontWeight: '500' }}>
+              {copied === r.code ? '✓' : 'Copy'}
+            </button>
+          </div>
         </div>
       ))}
 
-      <p style={{ textAlign: 'center', color: THEME.textMuted, marginTop: '32px', fontSize: '13px' }}>
-        A digital certificate has been sent to <strong>{session.email}</strong>
+      <p style={{ color: T.faint, fontSize: '12px', textAlign: 'center', marginTop: '24px' }}>
+        Certificate sent to {session.email}
       </p>
     </div>
   )

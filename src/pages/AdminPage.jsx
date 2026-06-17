@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { getAdminStats } from '../lib/api'
 
 function formatDate(iso) {
@@ -70,23 +71,35 @@ export default function AdminPage() {
           <p style={{ fontSize:'12px', color:'#555', margin:'0 0 2px' }}>Game Master Dashboard</p>
           <h1 style={{ fontSize:'18px', fontWeight:'500', margin:0 }}>Lost Shark Logbook</h1>
         </div>
-        <button onClick={refresh} style={{ background:'none', border:'1px solid #222',
+        <div style={{ display:'flex', gap:'8px' }}>
+          <Link to="/admin/new-adventure" style={{ background:'#fff', border:'1px solid #fff',
+            color:'#000', padding:'7px 14px', borderRadius:'6px', fontSize:'12px',
+            fontWeight:'500', textDecoration:'none' }}>
+            + New adventure
+          </Link>
+          <button onClick={refresh} style={{ background:'none', border:'1px solid #222',
           color:'#888', padding:'7px 14px', borderRadius:'6px', fontSize:'12px', cursor:'pointer' }}>
           {loading ? '...' : '↻ Refresh'}
-        </button>
+          </button>
+        </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:'10px', marginBottom:'24px' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:'10px', marginBottom:'10px' }}>
         {card(stats.active,         'Active right now',  '#378ADD')}
         {card(stats.today_complete, 'Completions today', '#1D9E75')}
         {card(stats.total_complete, 'Total completions', '#C8953A')}
         {card(stats.total_sessions, 'Total registered',  '#888')}
       </div>
 
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:'10px', marginBottom:'24px' }}>
+        {card(stats.completion_rate + '%', 'Completion rate', '#1D9E75')}
+        {card(`${stats.redemptions ?? 0} / ${stats.total_rewards ?? 0}`, 'Rewards redeemed', '#C8953A')}
+      </div>
+
       <p style={{ fontSize:'11px', fontWeight:'500', color:'#555', letterSpacing:'.06em',
         textTransform:'uppercase', margin:'0 0 10px' }}>Checkpoint funnel</p>
       <div style={{ background:'#111', border:'1px solid #1f1f1f', borderRadius:'10px',
-        padding:'16px', marginBottom:'24px' }}>
+        padding:'16px', marginBottom:'12px' }}>
         {stats.dropoff?.map(d => (
           <div key={d.sequence} style={{ marginBottom:'10px' }}>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
@@ -100,6 +113,23 @@ export default function AdminPage() {
           </div>
         ))}
       </div>
+
+      {stats.most_failed && (
+        <div style={{ background:'#2d1212', border:'1px solid #991b1b', borderRadius:'10px',
+          padding:'12px 16px', marginBottom:'24px', display:'flex',
+          justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <p style={{ fontSize:'11px', fontWeight:'600', color:'#fca5a5', letterSpacing:'.06em',
+              textTransform:'uppercase', margin:'0 0 2px' }}>Most struggled with</p>
+            <p style={{ fontSize:'13px', color:'#fff', margin:0 }}>
+              Checkpoint {stats.most_failed.sequence} ({stats.most_failed.slug})
+            </p>
+          </div>
+          <span style={{ fontSize:'13px', color:'#fca5a5', fontWeight:'500' }}>
+            {stats.most_failed.failed_attempts} wrong attempts
+          </span>
+        </div>
+      )}
 
       <p style={{ fontSize:'11px', fontWeight:'500', color:'#555', letterSpacing:'.06em',
         textTransform:'uppercase', margin:'0 0 10px' }}>Recent completions</p>

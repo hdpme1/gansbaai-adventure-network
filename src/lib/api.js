@@ -10,21 +10,25 @@ async function post(name, body) {
   return res.json()
 }
 
-export const createSession     = (data) => post('create-session', data)
-export const validateCheckpoint = (data) => post('validate-checkpoint', data)
+export const createSession      = (data)              => post('create-session',  data)
+export const validateCheckpoint = (data)              => post('validate-checkpoint', data)
+export const sendCompletion     = (sessionId)         => post('send-completion', { session_id: sessionId })
+export const getAdminStats      = (password)          => post('get-admin-stats', { password, adventure_slug: 'lost-shark-logbook' })
+export const getPartnerStats    = (slug, pin)         => post('get-partner-stats', { partner_slug: slug, pin })
+export const redeemCode         = (code, slug, pin)   => post('redeem-code', { code, partner_slug: slug, pin })
+export const listPartners       = (password)          => post('list-partners', { password })
+export const createAdventure    = (payload)            => post('create-adventure', payload)
+export const getHint            = (data)               => post('get-hint', data)
+export const uploadArtifactImage = (payload)           => post('upload-artifact-image', payload)
+
+export function getAdventure(slug) {
+  return fetch(BASE + '/get-adventure?slug=' + encodeURIComponent(slug), {
+    headers: { 'apikey': KEY }
+  }).then(r => r.json())
+}
 
 export function getSession(sessionId) {
   return fetch(BASE + '/get-session?session_id=' + sessionId, {
     headers: { 'apikey': KEY }
   }).then(r => r.json())
 }
-
-export function sendCompletion(sessionId) {
-  return post('send-completion', { session_id: sessionId })
-}
-
-export const getAdminStats = (password) =>
-  post('get-admin-stats', { password, adventure_slug: 'lost-shark-logbook' })
-
-export const getPartnerStats = (slug, pin) =>
-  post('get-partner-stats', { partner_slug: slug, pin })

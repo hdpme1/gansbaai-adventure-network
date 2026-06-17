@@ -51,6 +51,10 @@ export default function RegisterPage() {
     }
 
     localStorage.setItem('session_id', data.session_id)
+    if (data.status === 'COMPLETE') {
+      navigate('/complete')
+      return
+    }
     navigate('/c/' + data.current_checkpoint.slug)
   }
 

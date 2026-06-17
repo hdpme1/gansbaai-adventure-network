@@ -6,6 +6,7 @@ import CompletePage   from './pages/CompletePage'
 import BlockedPage    from './pages/BlockedPage'
 import AdminPage      from './pages/AdminPage'
 import PartnerPage    from './pages/PartnerPage'
+import AdminNewAdventurePage from './pages/AdminNewAdventurePage'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/blocked"  element={<BlockedPage />} />
         <Route path="/admin"   element={<AdminPage />} />
         <Route path="/partner/:slug" element={<PartnerPage />} />
+        <Route path="/admin/new-adventure" element={<AdminNewAdventurePage />} />
       </Routes>
     </BrowserRouter>
   )
