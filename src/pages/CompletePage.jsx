@@ -71,11 +71,11 @@ export default function CompletePage() {
       </div>
 
       {/* ── Stats ── */}
-      <div style={{ display: 'flex', gap: '14px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px', marginBottom: '24px' }}>
         {[['Points', session.total_points], ['Time', formatTime(mins)]].map(([l, v]) => (
-          <div key={l} style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`,
+          <div key={l} style={{ minWidth: 0, background: T.surface, border: `1px solid ${T.border}`,
             borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
-            <div style={{ fontSize: '24px', fontWeight: '600' }}>{v}</div>
+            <div style={{ fontSize: '24px', fontWeight: '600', wordBreak: 'break-word' }}>{v}</div>
             <div style={{ fontSize: '12px', color: T.faint, marginTop: '4px' }}>{l}</div>
           </div>
         ))}
@@ -101,7 +101,7 @@ export default function CompletePage() {
       </p>
 
       {rewards.length === 0 && (
-        <p style={{ color: T.faint, fontSize: '13px' }}>No rewards assigned for this adventure.</p>
+        <p style={{ color: T.faint, fontSize: '13px' }}>Loading rewards...</p>
       )}
 
       {rewards.map(r => (

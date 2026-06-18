@@ -80,9 +80,13 @@ export default function CheckpointPage() {
 
     getSession(sid).then(data => {
       if (data.error) { navigate('/'); return }
+      
+      // RESTORED LOGIC CHECK: Redirect if player has already completed this adventure path
       if (data.status === 'COMPLETE') { navigate('/complete'); return }
+      
       // Redirect if player tries to jump ahead or scan wrong QR
       if (data.current_checkpoint?.slug !== slug) { navigate('/blocked'); return }
+      
       // Restore any hints already revealed for this checkpoint (e.g. on page refresh)
       const hints = data.current_checkpoint?.hints || []
       setRevealedHints(hints.slice(0, data.hints_used || 0))
@@ -244,12 +248,19 @@ export default function CheckpointPage() {
             </div>
           ))}
 
+          {/* KEPT NEW UX: Immediate running-cost feedback shown straight away */}
+          {revealedHints.length > 0 && (
+            <p style={{ fontSize: '12px', color: T.errorText, margin: '0 0 10px', fontWeight: '600' }}>
+              −{revealedHints.length * cp.hint_penalty} pts deducted so far
+            </p>
+          )}
+
           {revealedHints.length < cp.hints.length && (
             <button onClick={revealNextHint} disabled={hintLoading}
               style={{
-                width: '100%', background: 'transparent', border: `1px solid ${T.borderMid}`,
-                color: T.muted, borderRadius: '8px', padding: '11px 14px',
-                fontSize: '13px', cursor: hintLoading ? 'default' : 'pointer',
+                width: '100%', background: 'transparent', border: `1px solid ${T.accent}`,
+                color: T.accent, borderRadius: '8px', padding: '12px 14px',
+                fontSize: '13px', fontWeight: '600', cursor: hintLoading ? 'default' : 'pointer',
                 opacity: hintLoading ? 0.6 : 1,
               }}>
               {hintLoading ? 'Loading...' : `Need a hint? (-${cp.hint_penalty} pts)`}
@@ -388,7 +399,7 @@ export default function CheckpointPage() {
 
       <button
         onClick={() => result.next ? navigate('/c/' + result.next) : navigate('/complete')}
-        style={btn({ background: T.success, color: T.text })}>
+        style={btn({ background: T.success, color: T.text })}>\
         Continue Adventure →
       </button>
     </div>
