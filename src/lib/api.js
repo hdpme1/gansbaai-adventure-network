@@ -13,7 +13,11 @@ async function post(name, body) {
 export const createSession      = (data)              => post('create-session',  data)
 export const validateCheckpoint = (data)              => post('validate-checkpoint', data)
 export const sendCompletion     = (sessionId)         => post('send-completion', { session_id: sessionId })
-export const getAdminStats      = (password)          => post('get-admin-stats', { password, adventure_slug: 'lost-shark-logbook' })
+export const getAdminStats = (password, adventureSlug) =>
+  post('get-admin-stats', {
+    password,
+    adventure_slug: adventureSlug
+  })
 export const getPartnerStats    = (slug, pin)         => post('get-partner-stats', { partner_slug: slug, pin })
 export const redeemCode         = (code, slug, pin)   => post('redeem-code', { code, partner_slug: slug, pin })
 export const listPartners       = (password)          => post('list-partners', { password })

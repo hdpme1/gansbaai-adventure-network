@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { getAdminStats } from '../lib/api'
 
@@ -13,9 +13,16 @@ export default function AdminPage() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
 
+  const [adventureSlug, setAdventureSlug] =
+  useState('lost-shark-logbook')
+
   async function login() {
     setLoading(true); setError('')
-    const data = await getAdminStats(password)
+    const data = await getAdminStats(
+  password,
+  adventureSlug
+)
+
     if (data.error === 'Unauthorized') {
       setError('Incorrect password'); setLoading(false); return
     }
@@ -27,10 +34,13 @@ export default function AdminPage() {
 
   async function refresh() {
     setLoading(true)
-    const data = await getAdminStats(password)
+    const data = await getAdminStats(password, adventureSlug)
     if (!data.error) setStats(data)
     setLoading(false)
   }
+  useEffect(() => {
+  if (stats) refresh()
+}, [adventureSlug])
 
   const card = (value, label, color) => (
     <div style={{ background:'#111', border:'1px solid #1f1f1f',
@@ -69,7 +79,26 @@ export default function AdminPage() {
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'24px' }}>
         <div>
           <p style={{ fontSize:'12px', color:'#555', margin:'0 0 2px' }}>Game Master Dashboard</p>
-          <h1 style={{ fontSize:'18px', fontWeight:'500', margin:0 }}>Lost Shark Logbook</h1>
+         <select
+  value={adventureSlug}
+  onChange={e => setAdventureSlug(e.target.value)}
+  style={{
+    background:'#111',
+    color:'#fff',
+    border:'1px solid #2a2a2a',
+    borderRadius:'6px',
+    padding:'8px 10px',
+    fontSize:'14px'
+  }}
+>
+  <option value="lost-shark-logbook">
+    Lost Shark Logbook
+  </option>
+
+  <option value="the-tideline-survey">
+    The Tideline Survey
+  </option>
+</select>
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
           <Link to="/admin/new-adventure" style={{ background:'#fff', border:'1px solid #fff',
