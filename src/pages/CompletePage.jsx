@@ -1,133 +1,146 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getAdventure, getSession } from '../lib/api'
+import { getSession } from '../lib/api'
 
-const THEME = {
-  bg: '#0a0a0a',
-  accent: '#C8953A',
-  text: '#ffffff',
-  textMuted: '#888'
+const T = {
+  bg:           '#0a0a0a',
+  surface:      '#111111',
+  border:       '#1f1f1f',
+  surfaceAlt:   '#1a1a1a',
+  text:         '#ffffff',
+  muted:        '#888888',
+  faint:        '#444444',
+  accent:       '#C8953A',
+  accentDim:    '#7a5a22',
+  success:      '#1D9E75',
+  successBg:    '#052e16',
+  successBorder:'#166534',
+  successText:  '#86efac',
 }
 
-export default function LandingPage() {
-  const navigate = useNavigate()
-  const [adventure, setAdventure] = useState(null)
-  const [notFound, setNotFound]   = useState(false)
-  const [checking, setChecking]   = useState(true)  // checking for an existing session before showing intro
+function formatTime(minutes) {
+  if (!minutes || minutes <= 0) return 'Under a minute'
+  if (minutes < 60) return minutes + ' mins'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return h + 'h' + (m > 0 ? ' ' + m + 'm' : '')
+}
 
-  // Which adventure this landing page represents — from the QR code's URL.
-  // Defaults to the original adventure so existing QR codes with no
-  // ?adventure= param keep working exactly as before.
-  const adventureSlug = new URLSearchParams(window.location.search).get('adventure') || 'lost-shark-logbook'
+export default function CompletePage() {
+  const navigate = useNavigate()
+  const [session, setSession] = useState(null)
+  const [copied, setCopied]   = useState(null)
 
   useEffect(() => {
-    let cancelled = false
-    setChecking(true)
-    setAdventure(null)
-    setNotFound(false)
+    const sid = localStorage.getItem('session_id')
+    if (!sid) { navigate('/'); return }
 
-    async function init() {
-      // ── Resume check: if this device already has a session for THIS
-      //    adventure, skip the marketing intro entirely and drop the player
-      //    straight back where they left off. Handles a killed tab, a closed
-      //    browser, or just coming back the next day. ──
-      const sid = localStorage.getItem('session_id')
-      if (sid) {
-        const session = await getSession(sid)
-        if (cancelled) return
-        if (!session.error && session.adventure?.slug === adventureSlug) {
-          if (session.status === 'COMPLETE') {
-            navigate('/complete')
-            return
-          }
-          if (session.current_checkpoint?.slug) {
-            navigate('/c/' + session.current_checkpoint.slug)
-            return
-          }
-          // Session exists but is in a state we can't route from cleanly —
-          // fall through and show the normal landing page as a safety net.
-        }
-      }
+    getSession(sid).then(data => {
+      if (data.error) { navigate('/'); return }
+      setSession(data)
+    })
+  }, [])
 
-      // ── No resumable session for this adventure — show the normal intro ──
-      const data = await getAdventure(adventureSlug)
-      if (cancelled) return
-      if (data.error) { setNotFound(true); setChecking(false); return }
-      setAdventure(data)
-      setChecking(false)
-    }
+  function copyCode(code) {
+    navigator.clipboard.writeText(code)
+    setCopied(code)
+    setTimeout(() => setCopied(null), 2000)
+  }
 
-    init()
-    return () => { cancelled = true }
-  }, [adventureSlug])
+  function handleReset() {
+    // Safely preserve the active adventure context before clearing session state
+    const currentSlug = session?.adventure_slug || 'the-tideline-survey'
+    localStorage.clear()
+    navigate(`/?adventure=${currentSlug}`)
+  }
 
-  if (checking) return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: THEME.bg, color: THEME.textMuted,
-    }}>
-      Loading...
+  if (!session) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.faint }}>
+      Loading summary...
     </div>
   )
 
-  if (notFound) return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '32px', textAlign: 'center', background: THEME.bg, color: THEME.textMuted,
-    }}>
-      This adventure isn't available right now.
-    </div>
-  )
-
-  if (!adventure) return null
+  const rewards = session.rewards || []
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '32px',
-      textAlign: 'center',
-      background: THEME.bg,
-      color: THEME.text
-    }}>
-      <div style={{ fontSize: '64px', marginBottom: '24px' }}>{adventure.icon || '🧭'}</div>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, padding: '48px 24px 32px', maxWidth: '480px', margin: '0 auto' }}>
+      
+      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+        <div style={{ fontSize: '56px', marginBottom: '16px' }}>🏆</div>
+        <h1 style={{ fontSize: '28px', fontWeight: '700', margin: '0 0 8px', letterSpacing: '-0.5px' }}>
+          Adventure Complete!
+        </h1>
+        <p style={{ fontSize: '15px', color: T.muted, lineHeight: '1.6', margin: 0 }}>
+          Outstanding work, <span style={{ color: T.text, fontWeight: '600' }}>{session.player_name || 'Explorer'}</span>. You have mapped the routes and logged every discovery.
+        </p>
+      </div>
 
-      <h1 className="font-serif" style={{
-        fontSize: '34px',
-        fontWeight: '600',
-        marginBottom: '16px',
-        letterSpacing: '-0.3px'
-      }}>
-        {adventure.name}
-      </h1>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '32px' }}>
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+          <span style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '4px' }}>
+            Final Score
+          </span>
+          <span style={{ fontSize: '24px', fontWeight: '700', color: T.text }}>
+            {session.total_points} <span style={{ fontSize: '13px', color: T.muted, fontWeight: '400' }}>PTS</span>
+          </span>
+        </div>
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+          <span style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '4px' }}>
+            Time Elapsed
+          </span>
+          <span style={{ fontSize: '20px', fontWeight: '700', color: T.text, lineHeight: '1.45' }}>
+            {formatTime(session.duration_minutes)}
+          </span>
+        </div>
+      </div>
 
-      <p style={{
-        fontSize: '15px',
-        color: THEME.textMuted,
-        maxWidth: '380px',
-        lineHeight: '1.7',
-        marginBottom: '48px'
-      }}>
-        {adventure.story_intro}
+      <h2 style={{ fontSize: '13px', fontWeight: '700', color: T.muted, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '16px' }}>
+        Your Unlocked Vouchers ({rewards.length})
+      </h2>
+
+      {rewards.length === 0 ? (
+        <p style={{ fontSize: '14px', color: T.faint, fontStyle: 'italic', margin: '0 0 32px' }}>
+          No promotional loot vouchers are attached to this adventure.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '40px' }}>
+          {rewards.map((r, i) => (
+            <div key={i} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: '14px', padding: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                <div>
+                  <p style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 2px' }}>{r.title}</p>
+                  <p style={{ fontSize: '13px', color: T.muted, margin: 0, lineHeight: '1.5' }}>{r.description}</p>
+                </div>
+                {r.claimed_at && (
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: T.success, background: T.successBg, border: `1px solid ${T.successBorder}`, padding: '4px 8px', borderRadius: '6px', whiteSpace: 'nowrap', letterSpacing: '.05em' }}>
+                    REDEEMED
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                <div style={{ flex: 1, background: T.surfaceAlt, borderRadius: '8px', padding: '12px 14px', border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'monospace', fontSize: '18px', fontWeight: '700', letterSpacing: '.12em', color: T.accent }}>
+                    {r.code}
+                  </span>
+                </div>
+                <button onClick={() => copyCode(r.code)}
+                  style={{ background: copied === r.code ? T.success : T.surfaceAlt, border: `1px solid ${copied === r.code ? T.success : T.border}`, borderRadius: '8px', color: copied === r.code ? '#fff' : T.text, padding: '0 20px', fontSize: '13px', cursor: 'pointer', transition: 'all .15s', fontWeight: '600' }}>
+                  {copied === r.code ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p style={{ color: T.faint, fontSize: '12px', textAlign: 'center', lineHeight: '1.6', margin: '0 0 24px' }}>
+        Show reward cards to local shop partners to claim. Progress saved locally on this logbook profile.
       </p>
 
-      <button
-        onClick={() => navigate('/register?adventure=' + adventureSlug)}
-        style={{
-          background: '#fff',
-          color: '#000',
-          border: 'none',
-          padding: '16px 40px',
-          borderRadius: '12px',
-          fontSize: '17px',
-          fontWeight: '600',
-          cursor: 'pointer'
-        }}
-      >
-        Begin the Hunt
+      <button onClick={handleReset}
+        style={{ width: '100%', padding: '16px', background: 'transparent', border: `1px solid ${T.border}`, borderRadius: '12px', color: T.muted, fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
+        Clear Logbook & Start Anew
       </button>
     </div>
   )
