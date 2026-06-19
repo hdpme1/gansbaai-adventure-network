@@ -95,11 +95,11 @@ export default function LandingPage() {
     }}>
       <div style={{ fontSize: '64px', marginBottom: '24px' }}>{adventure.icon || '🧭'}</div>
 
-      <h1 style={{
-        fontSize: '32px',
+      <h1 className="font-serif" style={{
+        fontSize: '34px',
         fontWeight: '600',
         marginBottom: '16px',
-        letterSpacing: '-0.5px'
+        letterSpacing: '-0.3px'
       }}>
         {adventure.name}
       </h1>

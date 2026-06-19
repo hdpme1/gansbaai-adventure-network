@@ -69,7 +69,7 @@ export default function RegisterPage() {
       color: THEME.text
     }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
-        <h1 style={{ fontSize: '26px', fontWeight: '600', marginBottom: '8px' }}>
+        <h1 className="font-serif" style={{ fontSize: '28px', fontWeight: '600', marginBottom: '8px' }}>
           Join the Hunt
         </h1>
         <p style={{ color: THEME.textMuted, marginBottom: '32px' }}>

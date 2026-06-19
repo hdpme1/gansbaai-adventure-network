@@ -13,7 +13,6 @@ export default function GPSGate({ checkpoint, onReady, autoRequest = false }) {
   const [status, setStatus]     = useState('idle')
   const [distance, setDistance] = useState(null)
 
-  // Auto-request GPS when component mounts with autoRequest=true
   useEffect(() => {
     if (autoRequest && status === 'idle') {
       requestGPS()
@@ -30,6 +29,7 @@ export default function GPSGate({ checkpoint, onReady, autoRequest = false }) {
           haversine(latitude, longitude, Number(checkpoint.gps_lat), Number(checkpoint.gps_lng))
         )
         setDistance(dist)
+
         if (dist <= checkpoint.gps_radius_meters) {
           setStatus('ready')
           onReady({ lat: latitude, lng: longitude })
@@ -42,28 +42,50 @@ export default function GPSGate({ checkpoint, onReady, autoRequest = false }) {
     )
   }
 
+  // ─── Dynamic proximity tiers — relative to THIS checkpoint's own radius,
+  //     not a fixed distance, so it scales correctly whether a checkpoint's
+  //     radius is 50m or 150m. ─────────────────────────────────────────────
+  let farMessage = `You are ${distance}m away. You need to be within ${checkpoint.gps_radius_meters}m — get closer!`
+  let farColor = '#fbbf24'
+
+  if (distance !== null) {
+    const radius = checkpoint.gps_radius_meters || 75
+    if (distance > radius * 5) {
+      farMessage = `❄️ Cold — ${distance}m away. Keep heading toward the location in your clue.`
+      farColor = '#60a5fa'
+    } else if (distance > radius * 2) {
+      farMessage = `🌤️ Warm — ${distance}m away. You're heading the right way!`
+      farColor = '#f59e0b'
+    } else {
+      farMessage = `🔥 Getting hot! Only ${distance}m away. Look closely around you.`
+      farColor = '#ef4444'
+    }
+  }
+
   const config = {
     idle:    { msg: 'We need to verify you are at this location before revealing the puzzle.', btn: 'Verify my location', color: '#888' },
-    locating:{ msg: 'Getting your location...', color: '#888' },
-    ready:   { msg: 'Location verified — answer the puzzle below.', color: '#86efac' },
+    locating:{ msg: '📡 Getting your location...', color: '#888' },
+    ready:   { msg: '✓ Location verified — answer the puzzle below.', color: '#1D9E75' },
     denied:  { msg: 'Location access denied. Enable GPS in your browser settings to continue.', color: '#fca5a5' },
-    far:     { msg: 'You are ' + distance + 'm away. You need to be within ' + checkpoint.gps_radius_meters + 'm — get closer!',
-               btn: 'Try again', color: '#fbbf24' },
+    far:     { msg: farMessage, btn: 'Scan position again', color: farColor },
   }
 
   const c = config[status]
 
   return (
-    <div style={{ marginBottom:'20px', padding:'14px', background:'#111',
-      borderRadius:'8px', border:'1px solid #1f1f1f' }}>
-      <p style={{ fontSize:'13px', color: c.color, lineHeight:'1.6',
-        marginBottom: c.btn ? '10px' : '0' }}>
+    <div style={{ marginBottom:'24px', padding:'16px', background:'#111',
+      borderRadius:'12px', border:`1px solid ${status === 'far' ? c.color : '#1f1f1f'}`,
+      transition: 'border-color 0.3s ease' }}>
+      <p style={{ fontSize:'14px', color: c.color, lineHeight:'1.6', fontWeight: '500',
+        margin: '0 0 ' + (c.btn ? '12px' : '0') }}>
         {c.msg}
       </p>
       {c.btn && (
-        <button onClick={requestGPS}
-          style={{ background:'transparent', border:'1px solid #333',
-            color:'#fff', padding:'8px 16px', borderRadius:'6px', fontSize:'13px' }}>
+        <button onClick={requestGPS} style={{
+          background: status === 'far' ? c.color : '#fff',
+          color: '#000', border:'none', borderRadius:'8px', padding:'10px 16px',
+          fontSize:'13px', fontWeight:'600', cursor:'pointer'
+        }}>
           {c.btn}
         </button>
       )}

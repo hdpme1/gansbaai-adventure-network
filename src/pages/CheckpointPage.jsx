@@ -1,7 +1,23 @@
+
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import GPSGate from '../components/GPSGate'
 import { getSession, validateCheckpoint, sendCompletion, getHint } from '../lib/api'
+import AnimatedNumber from '../components/AnimatedNumber'
+
+// ─── One-time artifact reveal animation — guarded so Vite's hot-reload in
+//     dev doesn't keep stacking duplicate <style> tags into <head>. ───────
+if (typeof document !== 'undefined' && !document.getElementById('artifact-pop-keyframes')) {
+  const style = document.createElement('style')
+  style.id = 'artifact-pop-keyframes'
+  style.textContent = `
+    @keyframes artifactPop {
+      0% { opacity: 0; transform: translateY(20px) scale(0.96); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+  `
+  document.head.appendChild(style)
+}
 
 // ─── Theme ─────────────────────────────────────────────────────────────────────
 // Change colours here — nowhere else needs updating.
@@ -23,6 +39,7 @@ const T = {
   errorBg:     '#2d1212',
   errorBorder: '#991b1b',
   errorText:   '#fca5a5',
+  warning:     '#d97706',
 }
 
 // ─── Shared style helpers ───────────────────────────────────────────────────────
@@ -47,6 +64,11 @@ const ghostBtn = (overrides = {}) => ({
   ...overrides,
 })
 
+// iOS Safari has no Vibration API — this just becomes a harmless no-op there.
+function vibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern)
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 export default function CheckpointPage() {
   const { slug }  = useParams()
@@ -62,6 +84,7 @@ export default function CheckpointPage() {
   const [downloadError, setDownloadError] = useState(false)
   const [revealedHints, setRevealedHints] = useState([])
   const [hintLoading, setHintLoading] = useState(false)
+  const [confirmHint, setConfirmHint] = useState(false)  // two-step hint guard
 
   // Reset everything when checkpoint slug changes (fixes "Continue Adventure" bug)
   useEffect(() => {
@@ -74,25 +97,30 @@ export default function CheckpointPage() {
     setDownloading(false)
     setRevealedHints([])
     setHintLoading(false)
+    setConfirmHint(false)
 
     const sid = localStorage.getItem('session_id')
     if (!sid) { navigate('/'); return }
 
     getSession(sid).then(data => {
       if (data.error) { navigate('/'); return }
-      
-      // RESTORED LOGIC CHECK: Redirect if player has already completed this adventure path
       if (data.status === 'COMPLETE') { navigate('/complete'); return }
-      
       // Redirect if player tries to jump ahead or scan wrong QR
       if (data.current_checkpoint?.slug !== slug) { navigate('/blocked'); return }
-      
       // Restore any hints already revealed for this checkpoint (e.g. on page refresh)
       const hints = data.current_checkpoint?.hints || []
       setRevealedHints(hints.slice(0, data.hints_used || 0))
       setSession(data)
     })
   }, [slug])
+
+  // Two-step hint confirm auto-resets if the player doesn't tap again in time —
+  // prevents losing points from an accidental tap while walking.
+  useEffect(() => {
+    if (!confirmHint) return
+    const timer = setTimeout(() => setConfirmHint(false), 3500)
+    return () => clearTimeout(timer)
+  }, [confirmHint])
 
   // Fetch the artifact image as a blob so the browser saves it
   // instead of just navigating to it (storage URLs are cross-origin,
@@ -120,6 +148,14 @@ export default function CheckpointPage() {
   }
 
   async function revealNextHint() {
+    // First tap arms the confirmation; second tap actually fires the request.
+    if (!confirmHint) {
+      setConfirmHint(true)
+      vibrate(40)
+      return
+    }
+
+    setConfirmHint(false)
     setHintLoading(true)
     const sid = localStorage.getItem('session_id')
     const data = await getHint({
@@ -129,6 +165,7 @@ export default function CheckpointPage() {
     })
     setHintLoading(false)
     if (data.hint) {
+      vibrate([60, 40, 60])
       setRevealedHints(h => [...h, data.hint])
     }
   }
@@ -149,14 +186,15 @@ export default function CheckpointPage() {
     setLoading(false)
 
     if (data.success && data.is_complete) {
+      vibrate([150, 75, 150, 75, 300])
       setView('completing')
-      setLoading(false)
       try { await sendCompletion(sid) } catch (err) { console.error('Completion error:', err) }
       navigate('/complete')
       return
     }
 
     if (data.success) {
+      vibrate([100, 50, 100])
       setResult({
         ok:          true,
         message:     data.next_clue,
@@ -168,6 +206,7 @@ export default function CheckpointPage() {
       return
     }
 
+    vibrate(300)
     setResult({ ok: false, message: data.message })
     setAnswer('')
   }
@@ -183,26 +222,41 @@ export default function CheckpointPage() {
   const cp       = session.current_checkpoint
   const artifact = cp.artifact
 
+  // Shared sticky top bar — same on all three in-game views, so progress
+  // and score stay visible while scrolling a long riddle or story.
+  const stickyBar = (left, right) => (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, height: '54px',
+      background: 'rgba(10,10,10,0.85)', backdropFilter: 'blur(12px)',
+      borderBottom: `1px solid ${T.border}`, display: 'flex',
+      justifyContent: 'space-between', alignItems: 'center',
+      padding: '0 24px', zIndex: 100,
+    }}>
+      {left}
+      {right}
+    </div>
+  )
+
   // ── Story view ────────────────────────────────────────────────────────────────
   if (view === 'story') return (
-    <div style={{ minHeight: '100vh', padding: '24px', maxWidth: '480px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
-        <span style={{ fontSize: '13px', color: T.faint }}>Page {cp.sequence} of {session.total_checkpoints}</span>
-        <span style={{ fontSize: '13px', color: T.accent }}>{session.total_points} pts</span>
-      </div>
+    <div key="story" className="view-transition" style={{ minHeight: '100vh', padding: '72px 24px 24px', maxWidth: '480px', margin: '0 auto' }}>
+      {stickyBar(
+        <span style={{ fontSize: '13px', color: T.faint }}>Page {cp.sequence} of {session.total_checkpoints}</span>,
+        <span style={{ fontSize: '13px', color: T.accent, fontWeight: '600' }}>{session.total_points} pts</span>
+      )}
 
       <p style={{ fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.1em',
         textTransform: 'uppercase', marginBottom: '12px' }}>
         Logbook entry
       </p>
 
-      <div style={{ borderLeft: `2px solid ${T.accentDim}`, paddingLeft: '16px', marginBottom: '40px' }}>
+      <div className="torn-edge" style={{ borderLeft: `2px solid ${T.accentDim}`, paddingLeft: '16px', marginBottom: '40px' }}>
         <p style={{ fontSize: '15px', color: '#ccc', lineHeight: '1.8', margin: 0 }}>
           {cp.story_snippet}
         </p>
       </div>
 
-      <button onClick={() => setView('puzzle')} style={btn({ background: T.text, color: T.bg })}>
+      <button onClick={() => { vibrate(30); setView('puzzle') }} style={btn({ background: T.text, color: T.bg })}>
         Continue →
       </button>
     </div>
@@ -210,14 +264,11 @@ export default function CheckpointPage() {
 
   // ── Puzzle view (riddle + GPS + answer — all on one screen) ───────────────────
   if (view === 'puzzle') return (
-    <div style={{ minHeight: '100vh', padding: '24px', maxWidth: '480px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', marginBottom: '28px' }}>
-        <button onClick={() => setView('story')} style={ghostBtn()}>
-          ← Back
-        </button>
-        <span style={{ fontSize: '13px', color: T.accent }}>{session.total_points} pts</span>
-      </div>
+    <div key="puzzle" className="view-transition" style={{ minHeight: '100vh', padding: '72px 24px 24px', maxWidth: '480px', margin: '0 auto' }}>
+      {stickyBar(
+        <button onClick={() => setView('story')} style={ghostBtn()}>← Back</button>,
+        <span style={{ fontSize: '13px', color: T.accent, fontWeight: '600' }}>{session.total_points} pts</span>
+      )}
 
       <p style={{ fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.1em',
         textTransform: 'uppercase', marginBottom: '12px' }}>
@@ -248,7 +299,7 @@ export default function CheckpointPage() {
             </div>
           ))}
 
-          {/* KEPT NEW UX: Immediate running-cost feedback shown straight away */}
+          {/* Immediate running-cost feedback, shown as soon as a hint is revealed */}
           {revealedHints.length > 0 && (
             <p style={{ fontSize: '12px', color: T.errorText, margin: '0 0 10px', fontWeight: '600' }}>
               −{revealedHints.length * cp.hint_penalty} pts deducted so far
@@ -258,12 +309,18 @@ export default function CheckpointPage() {
           {revealedHints.length < cp.hints.length && (
             <button onClick={revealNextHint} disabled={hintLoading}
               style={{
-                width: '100%', background: 'transparent', border: `1px solid ${T.accent}`,
-                color: T.accent, borderRadius: '8px', padding: '12px 14px',
+                width: '100%', background: 'transparent',
+                border: `1px solid ${confirmHint ? T.warning : T.accent}`,
+                color: confirmHint ? T.warning : T.accent,
+                borderRadius: '8px', padding: '12px 14px',
                 fontSize: '13px', fontWeight: '600', cursor: hintLoading ? 'default' : 'pointer',
-                opacity: hintLoading ? 0.6 : 1,
+                opacity: hintLoading ? 0.6 : 1, transition: 'all 0.2s ease',
               }}>
-              {hintLoading ? 'Loading...' : `Need a hint? (-${cp.hint_penalty} pts)`}
+              {hintLoading
+                ? 'Loading...'
+                : confirmHint
+                  ? `Tap again to confirm (-${cp.hint_penalty} pts)`
+                  : `Need a hint? (-${cp.hint_penalty} pts)`}
             </button>
           )}
         </div>
@@ -314,16 +371,16 @@ export default function CheckpointPage() {
 
   // ── Success view ──────────────────────────────────────────────────────────────
   if (view === 'success' && result?.ok) return (
-    <div style={{ minHeight: '100vh', padding: '24px', maxWidth: '480px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
-        <span style={{ fontSize: '13px', color: T.faint }}>Page {cp.sequence} of {session.total_checkpoints}</span>
-        <span style={{ fontSize: '13px', color: T.accent }}>{session.total_points + (result.points || 0)} pts</span>
-      </div>
+    <div key="success" className="view-transition" style={{ minHeight: '100vh', padding: '72px 24px 24px', maxWidth: '480px', margin: '0 auto' }}>
+      {stickyBar(
+        <span style={{ fontSize: '13px', color: T.faint }}>Page {cp.sequence} of {session.total_checkpoints}</span>,
+        <span style={{ fontSize: '13px', color: T.accent, fontWeight: '600' }}>{session.total_points + (result.points || 0)} pts</span>
+      )}
 
       {/* Points earned banner */}
-      <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+      <div style={{ textAlign: 'center', marginBottom: '28px', marginTop: '12px' }}>
         <div style={{ fontSize: '44px', fontWeight: '700', color: T.success, lineHeight: 1 }}>
-          +{result.points}
+          +<AnimatedNumber value={result.points} />
         </div>
         <p style={{ fontSize: '13px', color: T.muted, marginTop: '6px' }}>
           points earned
@@ -337,8 +394,11 @@ export default function CheckpointPage() {
 
       {/* Artifact card — shows uploaded image, falls back to emoji icon */}
       {artifact && (
-        <div style={{ background: T.surface, border: `1px solid ${T.accentDim}`,
-          borderRadius: '14px', padding: '20px', marginBottom: '20px' }}>
+        <div style={{
+          background: T.surface, border: `1px solid ${T.accentDim}`,
+          borderRadius: '14px', padding: '20px', marginBottom: '20px',
+          animation: 'artifactPop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+        }}>
           <p style={{ fontSize: '10px', fontWeight: '700', color: T.accent, letterSpacing: '.12em',
             textTransform: 'uppercase', margin: '0 0 10px' }}>
             Artefact recovered
@@ -352,7 +412,7 @@ export default function CheckpointPage() {
               <span style={{ fontSize: '36px', lineHeight: 1, flexShrink: 0 }}>{artifact.icon || '🎁'}</span>
             )}
             <div>
-              <p style={{ fontSize: '15px', fontWeight: '600', color: T.text, margin: '0 0 4px' }}>
+              <p className="font-serif" style={{ fontSize: '17px', fontWeight: '600', color: T.text, margin: '0 0 4px' }}>
                 {artifact.name}
               </p>
               <p style={{ fontSize: '13px', color: T.muted, lineHeight: '1.6', margin: 0 }}>
@@ -399,7 +459,7 @@ export default function CheckpointPage() {
 
       <button
         onClick={() => result.next ? navigate('/c/' + result.next) : navigate('/complete')}
-        style={btn({ background: T.success, color: T.text })}>\
+        style={btn({ background: T.success, color: T.text })}>
         Continue Adventure →
       </button>
     </div>
