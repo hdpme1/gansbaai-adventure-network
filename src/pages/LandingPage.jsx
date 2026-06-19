@@ -13,11 +13,8 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const [adventure, setAdventure] = useState(null)
   const [notFound, setNotFound]   = useState(false)
-  const [checking, setChecking]   = useState(true)  // checking for an existing session before showing intro
+  const [checking, setChecking]   = useState(true)
 
-  // Which adventure this landing page represents — from the QR code's URL.
-  // Defaults to the original adventure so existing QR codes with no
-  // ?adventure= param keep working exactly as before.
   const adventureSlug = new URLSearchParams(window.location.search).get('adventure') || 'lost-shark-logbook'
 
   useEffect(() => {
@@ -27,54 +24,58 @@ export default function LandingPage() {
     setNotFound(false)
 
     async function init() {
-      // ── Resume check: if this device already has a session for THIS
-      //    adventure, skip the marketing intro entirely and drop the player
-      //    straight back where they left off. Handles a killed tab, a closed
-      //    browser, or just coming back the next day. ──
       const sid = localStorage.getItem('session_id')
       if (sid) {
-        const session = await getSession(sid)
-        if (cancelled) return
-        if (!session.error && session.adventure?.slug === adventureSlug) {
-          if (session.status === 'COMPLETE') {
-            navigate('/complete')
-            return
+        try {
+          const sess = await getSession(sid)
+          if (sess && !sess.error && !cancelled) {
+            // Force route straight to complete layout if already tagged done
+            if (sess.completed_at) {
+              setChecking(false)
+              navigate('/complete')
+              return
+            }
+            
+            // Resume mid-flight checkpoint if active
+            if (sess.adventure_slug === adventureSlug && sess.current_checkpoint_id) {
+              setChecking(false)
+              navigate('/c/' + sess.current_checkpoint_id)
+              return
+            }
           }
-          if (session.current_checkpoint?.slug) {
-            navigate('/c/' + session.current_checkpoint.slug)
-            return
-          }
-          // Session exists but is in a state we can't route from cleanly —
-          // fall through and show the normal landing page as a safety net.
+        } catch (e) {
+          console.error("Session sync issue:", e)
         }
       }
 
-      // ── No resumable session for this adventure — show the normal intro ──
-      const data = await getAdventure(adventureSlug)
-      if (cancelled) return
-      if (data.error) { setNotFound(true); setChecking(false); return }
-      setAdventure(data)
-      setChecking(false)
+      // Load specific theme schema metadata
+      try {
+        const adv = await getAdventure(adventureSlug)
+        if (cancelled) return
+        if (!adv || adv.error) {
+          setNotFound(true)
+        } else {
+          setAdventure(adv)
+        }
+      } catch (err) {
+        if (!cancelled) setNotFound(true)
+      } finally {
+        if (!cancelled) setChecking(false)
+      }
     }
 
     init()
     return () => { cancelled = true }
-  }, [adventureSlug])
+  }, [adventureSlug, navigate])
 
   if (checking) return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: THEME.bg, color: THEME.textMuted,
-    }}>
-      Loading...
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: THEME.bg, color: THEME.textMuted }}>
+      Synchronizing logbook state...
     </div>
   )
 
   if (notFound) return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '32px', textAlign: 'center', background: THEME.bg, color: THEME.textMuted,
-    }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', textAlign: 'center', background: THEME.bg, color: THEME.textMuted }}>
       This adventure isn't available right now.
     </div>
   )
@@ -82,52 +83,21 @@ export default function LandingPage() {
   if (!adventure) return null
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '32px',
-      textAlign: 'center',
-      background: THEME.bg,
-      color: THEME.text
-    }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px', textAlign: 'center', background: THEME.bg, color: THEME.text, maxWidth: '480px', margin: '0 auto' }}>
       <div style={{ fontSize: '64px', marginBottom: '24px' }}>{adventure.icon || '🧭'}</div>
 
-      <h1 className="font-serif" style={{
-        fontSize: '34px',
-        fontWeight: '600',
-        marginBottom: '16px',
-        letterSpacing: '-0.3px'
-      }}>
+      <h1 className="font-serif" style={{ fontSize: '34px', fontWeight: '600', marginBottom: '16px', letterSpacing: '-0.3px' }}>
         {adventure.name}
       </h1>
 
-      <p style={{
-        fontSize: '15px',
-        color: THEME.textMuted,
-        maxWidth: '380px',
-        lineHeight: '1.7',
-        marginBottom: '48px'
-      }}>
+      <p style={{ fontSize: '15px', color: THEME.textMuted, maxWidth: '380px', lineHeight: '1.7', marginBottom: '48px' }}>
         {adventure.story_intro}
       </p>
 
       <button
         onClick={() => navigate('/register?adventure=' + adventureSlug)}
-        style={{
-          background: '#fff',
-          color: '#000',
-          border: 'none',
-          padding: '16px 40px',
-          borderRadius: '12px',
-          fontSize: '17px',
-          fontWeight: '600',
-          cursor: 'pointer'
-        }}
-      >
-        Begin the Hunt
+        style={{ width: '100%', padding: '16px', background: THEME.accent, color: '#000', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '600', cursor: 'pointer' }}>
+        Begin Logbook Entry →
       </button>
     </div>
   )

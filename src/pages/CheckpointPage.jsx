@@ -1,26 +1,22 @@
-
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import GPSGate from '../components/GPSGate'
+import AudioCluePlayer from '../components/AudioCluePlayer'
 import { getSession, validateCheckpoint, sendCompletion, getHint } from '../lib/api'
 import AnimatedNumber from '../components/AnimatedNumber'
 
-// ─── One-time artifact reveal animation — guarded so Vite's hot-reload in
-//     dev doesn't keep stacking duplicate <style> tags into <head>. ───────
 if (typeof document !== 'undefined' && !document.getElementById('artifact-pop-keyframes')) {
   const style = document.createElement('style')
   style.id = 'artifact-pop-keyframes'
   style.textContent = `
     @keyframes artifactPop {
-      0% { opacity: 0; transform: translateY(20px) scale(0.96); }
+      0% { opacity: 0; transform: translateY(24px) scale(0.95); }
       100% { opacity: 1; transform: translateY(0) scale(1); }
     }
   `
   document.head.appendChild(style)
 }
 
-// ─── Theme ─────────────────────────────────────────────────────────────────────
-// Change colours here — nowhere else needs updating.
 const T = {
   bg:          '#0a0a0a',
   surface:     '#111111',
@@ -29,413 +25,393 @@ const T = {
   borderMid:   '#2a2a2a',
   text:        '#ffffff',
   muted:       '#888888',
-  faint:       '#444444',
-  accent:      '#C8953A',   // gold — main brand colour
+  faint:       '#333333',
+  accent:      '#C8953A',
   accentDim:   '#7a5a22',
   success:     '#1D9E75',
-  successBg:   '#052e16',
-  successBorder:'#166534',
+  successBg:   '#062419',
+  successBorder:'#10593e',
   successText: '#86efac',
-  errorBg:     '#2d1212',
-  errorBorder: '#991b1b',
-  errorText:   '#fca5a5',
-  warning:     '#d97706',
+  errorBg:     '#2d1010',
+  errorBorder: '#7f1d1d',
+  errorText:   '#fca5a5'
 }
 
-// ─── Shared style helpers ───────────────────────────────────────────────────────
-const btn = (overrides = {}) => ({
-  width: '100%',
-  padding: '16px',
-  border: 'none',
-  borderRadius: '12px',
-  fontSize: '16px',
-  fontWeight: '600',
-  cursor: 'pointer',
-  ...overrides,
-})
-
-const ghostBtn = (overrides = {}) => ({
-  background: 'transparent',
-  border: 'none',
-  color: T.muted,
-  fontSize: '13px',
-  cursor: 'pointer',
-  padding: '8px 0',
-  ...overrides,
-})
-
-// iOS Safari has no Vibration API — this just becomes a harmless no-op there.
-function vibrate(pattern) {
-  if (navigator.vibrate) navigator.vibrate(pattern)
+const inputStyle = {
+  width: '100%', padding: '16px', background: T.surface, border: `1px solid ${T.border}`,
+  borderRadius: '12px', color: T.text, fontSize: '16px', outline: 'none',
+  transition: 'border-color 0.2s', marginBottom: '16px', WebkitAppearance: 'none'
 }
 
-// ─── Component ─────────────────────────────────────────────────────────────────
+const btn = (custom) => ({
+  width: '100%', padding: '16px', borderRadius: '12px', fontSize: '15px',
+  fontWeight: '600', cursor: 'pointer', border: 'none', display: 'flex',
+  alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease', ...custom
+})
+
 export default function CheckpointPage() {
-  const { slug }  = useParams()
-  const navigate  = useNavigate()
+  const { id } = useParams()
+  const navigate = useNavigate()
 
-  const [session, setSession] = useState(null)
-  const [answer, setAnswer]   = useState('')
-  const [result, setResult]   = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [coords, setCoords]   = useState(null)
-  const [view, setView]       = useState('story')   // 'story' | 'puzzle' | 'success'
+  const [session, setSession]   = useState(null)
+  const [loading, setLoading]   = useState(true)
+  const [view, setView]         = useState('story') // 'story' | 'puzzle' | 'success' | 'completing'
+  const [answer, setAnswer]     = useState('')
+  const [coords, setCoords]     = useState(null)
+  const [error, setError]       = useState('')
+  const [checking, setChecking] = useState(false)
+  const [result, setResult]     = useState({ next: null, message: '', points_earned: 0 })
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState(false)
-  const [revealedHints, setRevealedHints] = useState([])
-  const [hintLoading, setHintLoading] = useState(false)
-  const [confirmHint, setConfirmHint] = useState(false)  // two-step hint guard
 
-  // Reset everything when checkpoint slug changes (fixes "Continue Adventure" bug)
+  // Hint tracking states
+  const [hintActive, setHintActive] = useState(null) // null | 1 | 2
+  const [hintText, setHintText]     = useState('')
+  const [hintLoading, setHintLoading] = useState(false)
+  const [confirmHintId, setConfirmHintId] = useState(null) // null | 1 | 2
+
+  const bgAudioRef = useRef(null)
+
   useEffect(() => {
-    setSession(null)
-    setView('story')
-    setResult(null)
+    let active = true
+    setLoading(true)
+    setError('')
     setAnswer('')
     setCoords(null)
-    setDownloadError(false)
-    setDownloading(false)
-    setRevealedHints([])
-    setHintLoading(false)
-    setConfirmHint(false)
+    setHintActive(null)
+    setHintText('')
+    setConfirmHintId(null)
 
     const sid = localStorage.getItem('session_id')
     if (!sid) { navigate('/'); return }
 
     getSession(sid).then(data => {
+      if (!active) return
       if (data.error) { navigate('/'); return }
-      if (data.status === 'COMPLETE') { navigate('/complete'); return }
-      // Redirect if player tries to jump ahead or scan wrong QR
-      if (data.current_checkpoint?.slug !== slug) { navigate('/blocked'); return }
-      // Restore any hints already revealed for this checkpoint (e.g. on page refresh)
-      const hints = data.current_checkpoint?.hints || []
-      setRevealedHints(hints.slice(0, data.hints_used || 0))
+
       setSession(data)
+      
+      const currentCp = data.adventure?.checkpoints?.find(c => c.id === id)
+      if (!currentCp) {
+        navigate('/')
+        return
+      }
+
+      // Sync views
+      const isDone = data.completed_checkpoints?.some(cc => cc.checkpoint_id === id)
+      if (isDone) {
+        const matchingDone = data.completed_checkpoints.find(cc => cc.checkpoint_id === id)
+        setResult({
+          next: matchingDone.next_checkpoint_id,
+          message: currentCp.next_clue || '',
+          points_earned: matchingDone.points_awarded || 0
+        })
+        setView('success')
+      } else {
+        setView('story')
+      }
+      setLoading(false)
     })
-  }, [slug])
 
-  // Two-step hint confirm auto-resets if the player doesn't tap again in time —
-  // prevents losing points from an accidental tap while walking.
+    return () => { active = false }
+  }, [id, navigate])
+
   useEffect(() => {
-    if (!confirmHint) return
-    const timer = setTimeout(() => setConfirmHint(false), 3500)
-    return () => clearTimeout(timer)
-  }, [confirmHint])
+    return () => {
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause()
+      }
+    }
+  }, [])
 
-  // Fetch the artifact image as a blob so the browser saves it
-  // instead of just navigating to it (storage URLs are cross-origin,
-  // so a plain <a download> is ignored by most browsers).
+  if (loading || !session) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.muted, background: T.bg }}>
+      Loading entry details...
+    </div>
+  )
+
+  const cp = session.adventure?.checkpoints?.find(c => c.id === id)
+  if (!cp) return null
+
+  const artifact = cp.artifact
+
+  // Setup background audio dynamically if present
+  if (!bgAudioRef.current && cp.audio_url) {
+    bgAudioRef.current = new Audio(cp.audio_url)
+    bgAudioRef.current.loop = true
+    bgAudioRef.current.volume = 0.2
+  }
+
+  function handleStartPuzzle() {
+    if (navigator.vibrate) navigator.vibrate(40)
+    if (bgAudioRef.current) {
+      bgAudioRef.current.play().catch(e => console.log("Music blocked", e))
+    }
+    setView('puzzle')
+  }
+
+  async function handleVerifyAnswer(e) {
+    e.preventDefault()
+    if (!answer.trim() || checking) return
+    setChecking(true)
+    setError('')
+
+    try {
+      const res = await validateCheckpoint(session.id, cp.id, answer.trim(), coords)
+      if (res.error) {
+        setError(res.error)
+        if (navigator.vibrate) navigator.vibrate([60, 40, 60]) // double buzz for error
+        setChecking(false)
+        return
+      }
+
+      if (navigator.vibrate) navigator.vibrate(120) // Long solid success vibration
+
+      setResult({
+        next: res.next_checkpoint_id,
+        message: res.next_clue_text || cp.next_clue || '',
+        points_earned: res.points_awarded || 0
+      })
+
+      // Sync state score immediately
+      setSession(prev => ({
+        ...prev,
+        total_points: (prev.total_points || 0) + (res.points_awarded || 0)
+      }))
+
+      setView('success')
+    } catch (err) {
+      setError('Network verification failure. Try submitting your answer again.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  async function handleRequestHint(hintNumber) {
+    if (hintLoading) return
+    setHintLoading(true)
+    try {
+      const data = await getHint(session.id, cp.id, hintNumber)
+      if (data.error) {
+        setError(data.error)
+      } else {
+        setHintText(data.hint_text)
+        setHintActive(hintNumber)
+        setConfirmHintId(null)
+        if (data.running_total_points !== undefined) {
+          setSession(prev => ({ ...prev, total_points: data.running_total_points }))
+        }
+      }
+    } catch (e) {
+      setError('Could not retrieve hint data.')
+    } finally {
+      setHintLoading(false)
+    }
+  }
+
+  async function handleFinalizeAdventure() {
+    setView('completing')
+    try {
+      await sendCompletion(session.id)
+      if (navigator.vibrate) navigator.vibrate([40, 40, 40])
+      // Route direct to summary page
+      navigate('/complete')
+    } catch (err) {
+      // Fallback redirection even on network drop
+      navigate('/complete')
+    }
+  }
+
   async function downloadArtifact(url, name) {
     setDownloading(true)
     setDownloadError(false)
     try {
       const res = await fetch(url)
       const blob = await res.blob()
-      const ext  = (blob.type.split('/')[1] || 'jpg').split('+')[0]
-      const objectUrl = URL.createObjectURL(blob)
+      const blobUrl = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = objectUrl
-      a.download = `${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${ext}`
+      a.href = blobUrl
+      a.download = `${name.toLowerCase().replace(/\s+/g, '-')}.jpg`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      URL.revokeObjectURL(objectUrl)
-    } catch (err) {
-      console.error('Artifact download failed:', err)
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (e) {
       setDownloadError(true)
-    }
-    setDownloading(false)
-  }
-
-  async function revealNextHint() {
-    // First tap arms the confirmation; second tap actually fires the request.
-    if (!confirmHint) {
-      setConfirmHint(true)
-      vibrate(40)
-      return
-    }
-
-    setConfirmHint(false)
-    setHintLoading(true)
-    const sid = localStorage.getItem('session_id')
-    const data = await getHint({
-      session_id: sid,
-      checkpoint_slug: slug,
-      hint_index: revealedHints.length,
-    })
-    setHintLoading(false)
-    if (data.hint) {
-      vibrate([60, 40, 60])
-      setRevealedHints(h => [...h, data.hint])
+    } finally {
+      setDownloading(false)
     }
   }
 
-  async function handleSubmit() {
-    if (!answer.trim() || !coords) return
-    setLoading(true)
-    setResult(null)
-
-    const sid  = localStorage.getItem('session_id')
-    const data = await validateCheckpoint({
-      session_id:      sid,
-      checkpoint_slug: slug,
-      answer,
-      player_lat:      coords.lat,
-      player_lng:      coords.lng,
-    })
-    setLoading(false)
-
-    if (data.success && data.is_complete) {
-      vibrate([150, 75, 150, 75, 300])
-      setView('completing')
-      try { await sendCompletion(sid) } catch (err) { console.error('Completion error:', err) }
-      navigate('/complete')
-      return
-    }
-
-    if (data.success) {
-      vibrate([100, 50, 100])
-      setResult({
-        ok:          true,
-        message:     data.next_clue,
-        next:        data.next_checkpoint?.slug,
-        points:      data.points_earned,        // matches edge function response field
-        hintPenalty: data.hint_penalty_applied || 0,
-      })
-      setView('success')
-      return
-    }
-
-    vibrate(300)
-    setResult({ ok: false, message: data.message })
-    setAnswer('')
-  }
-
-  // ── Loading state ─────────────────────────────────────────────────────────────
-  if (!session) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', color: T.faint }}>
-      Loading...
-    </div>
-  )
-
-  const cp       = session.current_checkpoint
-  const artifact = cp.artifact
-
-  // Shared sticky top bar — same on all three in-game views, so progress
-  // and score stay visible while scrolling a long riddle or story.
-  const stickyBar = (left, right) => (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, height: '54px',
-      background: 'rgba(10,10,10,0.85)', backdropFilter: 'blur(12px)',
-      borderBottom: `1px solid ${T.border}`, display: 'flex',
-      justifyContent: 'space-between', alignItems: 'center',
-      padding: '0 24px', zIndex: 100,
-    }}>
-      {left}
-      {right}
-    </div>
-  )
-
-  // ── Story view ────────────────────────────────────────────────────────────────
+  // ── Story view ──
   if (view === 'story') return (
-    <div key="story" className="view-transition" style={{ minHeight: '100vh', padding: '72px 24px 24px', maxWidth: '480px', margin: '0 auto' }}>
-      {stickyBar(
-        <span style={{ fontSize: '13px', color: T.faint }}>Page {cp.sequence} of {session.total_checkpoints}</span>,
-        <span style={{ fontSize: '13px', color: T.accent, fontWeight: '600' }}>{session.total_points} pts</span>
-      )}
-
-      <p style={{ fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.1em',
-        textTransform: 'uppercase', marginBottom: '12px' }}>
-        Logbook entry
-      </p>
-
-      <div className="torn-edge" style={{ borderLeft: `2px solid ${T.accentDim}`, paddingLeft: '16px', marginBottom: '40px' }}>
-        <p style={{ fontSize: '15px', color: '#ccc', lineHeight: '1.8', margin: 0 }}>
-          {cp.story_snippet}
-        </p>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, padding: '32px 24px', maxWidth: '480px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: `1px solid ${T.border}`, paddingBottom: '16px' }}>
+        <div>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.1em', textTransform: 'uppercase' }}>Logbook Entry</span>
+          <h2 style={{ fontSize: '20px', fontWeight: '700', margin: '4px 0 0' }}>{cp.slug.replace(/-/g, ' ')}</h2>
+        </div>
+        <div style={{ background: T.surface, padding: '8px 14px', borderRadius: '8px', border: `1px solid ${T.border}`, textAlign: 'right' }}>
+          <span style={{ display: 'block', fontSize: '9px', color: T.muted, textTransform: 'uppercase', fontWeight: '600' }}>Score</span>
+          <span style={{ fontSize: '16px', fontWeight: '700', color: T.accent }}><AnimatedNumber value={session.total_points || 0} /></span>
+        </div>
       </div>
 
-      <button onClick={() => { vibrate(30); setView('puzzle') }} style={btn({ background: T.text, color: T.bg })}>
-        Continue →
+      <div className="font-serif" style={{ fontSize: '17px', lineHeight: '1.75', color: '#e0e0e0', background: T.surface, padding: '24px', borderRadius: '14px', border: `1px solid ${T.border}`, marginBottom: '32px', fontStyle: 'italic', position: 'relative' }}>
+        "{cp.story_snippet}"
+      </div>
+
+      <button onClick={handleStartPuzzle} style={btn({ background: T.text, color: T.bg })}>
+        Continue to Riddle →
       </button>
     </div>
   )
 
-  // ── Puzzle view (riddle + GPS + answer — all on one screen) ───────────────────
+  // ── Puzzle view ──
   if (view === 'puzzle') return (
-    <div key="puzzle" className="view-transition" style={{ minHeight: '100vh', padding: '72px 24px 24px', maxWidth: '480px', margin: '0 auto' }}>
-      {stickyBar(
-        <button onClick={() => setView('story')} style={ghostBtn()}>← Back</button>,
-        <span style={{ fontSize: '13px', color: T.accent, fontWeight: '600' }}>{session.total_points} pts</span>
-      )}
-
-      <p style={{ fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.1em',
-        textTransform: 'uppercase', marginBottom: '12px' }}>
-        The riddle
-      </p>
-
-      <div style={{ background: T.surface, border: `1px solid ${T.border}`,
-        borderRadius: '12px', padding: '18px', marginBottom: '24px' }}>
-        <p style={{ fontSize: '16px', fontWeight: '500', lineHeight: '1.65',
-          color: T.text, margin: 0 }}>
-          {cp.riddle_text}
-        </p>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, padding: '32px 24px', maxWidth: '480px', margin: '0 auto', paddingBottom: '60px' }}>
+      
+      {/* Sticky Running Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div>
+          <span style={{ fontSize: '11px', color: T.accent, fontWeight: '600', letterSpacing: '.05em', textTransform: 'uppercase' }}>Active Objective</span>
+          <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0 }}>Location Lock</h2>
+        </div>
+        <div style={{ background: T.surface, padding: '6px 12px', borderRadius: '8px', border: `1px solid ${T.border}` }}>
+          <span style={{ fontSize: '14px', fontWeight: '700', color: T.accent }}><AnimatedNumber value={session.total_points || 0} /> <span style={{ fontSize: '10px', color: T.muted }}>PTS</span></span>
+        </div>
       </div>
 
-      {/* Hints — revealed one at a time, each costs points */}
-      {cp.hints && cp.hints.length > 0 && (
-        <div style={{ marginBottom: '24px' }}>
-          {revealedHints.map((h, i) => (
-            <div key={i} style={{ background: T.surfaceAlt, border: `1px solid ${T.border}`,
-              borderRadius: '10px', padding: '12px 14px', marginBottom: '8px' }}>
-              <p style={{ fontSize: '11px', fontWeight: '700', color: T.accent,
-                letterSpacing: '.08em', textTransform: 'uppercase', margin: '0 0 4px' }}>
-                Hint {i + 1}
-              </p>
-              <p style={{ fontSize: '13px', color: T.muted, lineHeight: '1.6', margin: 0 }}>
-                {h}
-              </p>
-            </div>
-          ))}
-
-          {/* Immediate running-cost feedback, shown as soon as a hint is revealed */}
-          {revealedHints.length > 0 && (
-            <p style={{ fontSize: '12px', color: T.errorText, margin: '0 0 10px', fontWeight: '600' }}>
-              −{revealedHints.length * cp.hint_penalty} pts deducted so far
-            </p>
-          )}
-
-          {revealedHints.length < cp.hints.length && (
-            <button onClick={revealNextHint} disabled={hintLoading}
-              style={{
-                width: '100%', background: 'transparent',
-                border: `1px solid ${confirmHint ? T.warning : T.accent}`,
-                color: confirmHint ? T.warning : T.accent,
-                borderRadius: '8px', padding: '12px 14px',
-                fontSize: '13px', fontWeight: '600', cursor: hintLoading ? 'default' : 'pointer',
-                opacity: hintLoading ? 0.6 : 1, transition: 'all 0.2s ease',
-              }}>
-              {hintLoading
-                ? 'Loading...'
-                : confirmHint
-                  ? `Tap again to confirm (-${cp.hint_penalty} pts)`
-                  : `Need a hint? (-${cp.hint_penalty} pts)`}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* GPS verification — auto-requests on load, onReady just sets coords, no view change */}
       <GPSGate checkpoint={cp} onReady={setCoords} autoRequest={true} />
 
-      {/* Answer input — appears once GPS is verified */}
       {coords && (
-        <>
-          <input
-            value={answer}
-            onChange={e => setAnswer(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            placeholder="Your answer..."
-            autoFocus
-            style={{
-              width: '100%',
-              background: T.surface,
-              border: `1px solid ${T.borderMid}`,
-              borderRadius: '12px',
-              padding: '16px',
-              color: T.text,
-              fontSize: '17px',
-              marginBottom: '12px',
-              boxSizing: 'border-box',
-            }}
-          />
+        <div style={{ animation: 'artifactPop 0.3s ease forwards' }}>
+          {cp.audio_url && <AudioCluePlayer url={cp.audio_url} />}
+          
+          <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: '14px', padding: '20px', marginBottom: '24px' }}>
+            <span style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '8px' }}>Cryptic Clue</span>
+            <p style={{ fontSize: '16px', lineHeight: '1.65', margin: 0, whiteSpace: 'pre-line', color: '#f0f0f0' }}>{cp.riddle_text}</p>
+          </div>
 
-          <button onClick={handleSubmit} disabled={loading || !answer.trim()}
-            style={btn({ background: T.text, color: T.bg, opacity: loading || !answer.trim() ? 0.5 : 1 })}>
-            {loading ? 'Checking...' : 'Submit Answer'}
-          </button>
+          <form onSubmit={handleVerifyAnswer} autoComplete="off">
+            <input
+              type="text"
+              placeholder="Type your discovery log answer..."
+              value={answer}
+              onChange={e => setAnswer(e.target.value)}
+              disabled={checking}
+              style={inputStyle}
+            />
 
-          {result && !result.ok && (
-            <div style={{ marginTop: '20px', padding: '16px', borderRadius: '10px',
-              background: T.errorBg, border: `1px solid ${T.errorBorder}` }}>
-              <p style={{ color: T.errorText, fontSize: '14px', lineHeight: '1.65', margin: 0 }}>
-                {result.message}
-              </p>
-            </div>
-          )}
-        </>
+            {error && (
+              <div style={{ background: T.errorBg, border: `1px solid ${T.errorBorder}`, borderRadius: '10px', padding: '12px', marginBottom: '16px', color: T.errorText, fontSize: '14px', lineHeight: '1.5' }}>
+                {error}
+              </div>
+            )}
+
+            <button type="submit" disabled={checking} style={btn({ background: T.accent, color: '#000' })}>
+              {checking ? 'Analyzing Log Entry...' : 'Log Answer & Transcribe'}
+            </button>
+          </form>
+
+          {/* Safe Confirm Hint System Deck */}
+          <div style={{ marginTop: '32px', borderTop: `1px solid ${T.border}`, paddingTop: '24px' }}>
+            {hintActive ? (
+              <div style={{ background: T.surfaceAlt, border: `1px solid ${T.borderMid}`, borderRadius: '12px', padding: '16px', color: '#e0e0e0', fontSize: '14px', lineHeight: '1.6' }}>
+                <span style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '4px' }}>Revealed Hint #{hintActive}</span>
+                {hintText}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Hint 1 */}
+                {confirmHintId === 1 ? (
+                  <button onClick={() => handleRequestHint(1)} disabled={hintLoading} style={btn({ background: T.errorBg, color: T.errorText, border: `1px solid ${T.errorBorder}`, fontSize: '13px' })}>
+                    {hintLoading ? 'Unlocking...' : `Confirm: Deduct ${cp.hint_penalty || 5} Points`}
+                  </button>
+                ) : (
+                  <button onClick={() => setConfirmHintId(1)} style={btn({ background: T.surface, color: T.muted, border: `1px solid ${T.border}`, fontSize: '13px' })}>
+                    Reveal Primary Clue Hint (-{cp.hint_penalty || 5} pts)
+                  </button>
+                )}
+
+                {/* Hint 2 */}
+                {confirmHintId === 2 ? (
+                  <button onClick={() => handleRequestHint(2)} disabled={hintLoading} style={btn({ background: T.errorBg, color: T.errorText, border: `1px solid ${T.errorBorder}`, fontSize: '13px' })}>
+                    {hintLoading ? 'Unlocking...' : `Confirm: Deduct ${cp.hint_penalty || 5} Points`}
+                  </button>
+                ) : (
+                  <button onClick={() => setConfirmHintId(2)} style={btn({ background: T.surface, color: T.muted, border: `1px solid ${T.border}`, fontSize: '13px' })}>
+                    Reveal Secondary Map Hint (-{cp.hint_penalty || 5} pts)
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
 
-  // ── Success view ──────────────────────────────────────────────────────────────
-  if (view === 'success' && result?.ok) return (
-    <div key="success" className="view-transition" style={{ minHeight: '100vh', padding: '72px 24px 24px', maxWidth: '480px', margin: '0 auto' }}>
-      {stickyBar(
-        <span style={{ fontSize: '13px', color: T.faint }}>Page {cp.sequence} of {session.total_checkpoints}</span>,
-        <span style={{ fontSize: '13px', color: T.accent, fontWeight: '600' }}>{session.total_points + (result.points || 0)} pts</span>
-      )}
-
-      {/* Points earned banner */}
-      <div style={{ textAlign: 'center', marginBottom: '28px', marginTop: '12px' }}>
-        <div style={{ fontSize: '44px', fontWeight: '700', color: T.success, lineHeight: 1 }}>
-          +<AnimatedNumber value={result.points} />
-        </div>
-        <p style={{ fontSize: '13px', color: T.muted, marginTop: '6px' }}>
-          points earned
+  // ── Success view ──
+  if (view === 'success') return (
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, padding: '32px 24px', maxWidth: '480px', margin: '0 auto', paddingBottom: '40px' }}>
+      
+      <div style={{ textAlign: 'center', marginBottom: '32px', background: T.successBg, border: `1px solid ${T.successBorder}`, padding: '20px', borderRadius: '14px' }}>
+        <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}>✓</span>
+        <h2 style={{ fontSize: '22px', fontWeight: '700', color: T.successText, margin: '0 0 4px' }}>Log Verified</h2>
+        <p style={{ fontSize: '13px', color: T.successText, opacity: 0.8, margin: 0 }}>
+          Earned +{result.points_earned} Exploration Points
         </p>
-        {result.hintPenalty > 0 && (
-          <p style={{ fontSize: '12px', color: T.faint, marginTop: '4px' }}>
-            (-{result.hintPenalty} pts for hints used)
-          </p>
-        )}
       </div>
 
-      {/* Artifact card — shows uploaded image, falls back to emoji icon */}
       {artifact && (
-        <div style={{
-          background: T.surface, border: `1px solid ${T.accentDim}`,
-          borderRadius: '14px', padding: '20px', marginBottom: '20px',
-          animation: 'artifactPop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+        <div style={{ 
+          background: T.surface, 
+          border: `1px solid ${T.accent}`, 
+          borderRadius: '16px', 
+          padding: '20px', 
+          marginBottom: '24px', 
+          textAlign: 'center',
+          animation: 'artifactPop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards' 
         }}>
-          <p style={{ fontSize: '10px', fontWeight: '700', color: T.accent, letterSpacing: '.12em',
-            textTransform: 'uppercase', margin: '0 0 10px' }}>
-            Artefact recovered
+          <p style={{ fontSize: '11px', fontWeight: '700', color: T.accent, letterSpacing: '.15em', textTransform: 'uppercase', margin: '0 0 16px' }}>
+            ✨ Logbook Artefact Recovered ✨
           </p>
-          <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-            {artifact.image_url ? (
-              <img src={artifact.image_url} alt={artifact.name}
-                style={{ width: '56px', height: '56px', objectFit: 'cover',
-                  borderRadius: '8px', flexShrink: 0, border: `1px solid ${T.border}` }} />
-            ) : (
-              <span style={{ fontSize: '36px', lineHeight: 1, flexShrink: 0 }}>{artifact.icon || '🎁'}</span>
-            )}
-            <div>
-              <p className="font-serif" style={{ fontSize: '17px', fontWeight: '600', color: T.text, margin: '0 0 4px' }}>
-                {artifact.name}
-              </p>
-              <p style={{ fontSize: '13px', color: T.muted, lineHeight: '1.6', margin: 0 }}>
-                {artifact.flavour_text}
-              </p>
-            </div>
-          </div>
+          
+          {artifact.image_url ? (
+            <img src={artifact.image_url} alt={artifact.name} style={{ 
+              width: '100%', 
+              maxHeight: '280px', 
+              objectFit: 'contain', 
+              borderRadius: '12px', 
+              backgroundColor: '#050505',
+              border: `1px solid ${T.border}`,
+              marginBottom: '16px'
+            }} />
+          ) : (
+            <div style={{ fontSize: '64px', margin: '24px 0' }}>{artifact.icon || '🎁'}</div>
+          )}
+
+          <h3 style={{ fontSize: '19px', fontWeight: '600', color: T.text, margin: '0 0 8px' }}>
+            {artifact.name}
+          </h3>
+          
+          <p style={{ fontSize: '14px', color: T.muted, lineHeight: '1.6', margin: '0 0 20px', fontStyle: 'italic' }}>
+            "{artifact.flavour_text}"
+          </p>
 
           {artifact.image_url && (
-            <div style={{ marginTop: '14px' }}>
-              <button onClick={() => downloadArtifact(artifact.image_url, artifact.name)}
-                disabled={downloading}
-                style={{
-                  background: 'transparent', border: `1px solid ${T.accentDim}`,
-                  color: T.accent, borderRadius: '8px', padding: '9px 16px',
-                  fontSize: '13px', fontWeight: '600', cursor: downloading ? 'default' : 'pointer',
-                  opacity: downloading ? 0.6 : 1,
+            <div>
+              <button onClick={() => downloadArtifact(artifact.image_url, artifact.name)} disabled={downloading}
+                style={{ 
+                  width: '100%', background: 'transparent', border: `1px solid ${T.accent}`, color: T.accent, 
+                  borderRadius: '8px', padding: '12px', fontSize: '14px', fontWeight: '600', cursor: downloading ? 'default' : 'pointer'
                 }}>
-                {downloading ? 'Saving...' : '↓ Save artifact'}
+                {downloading ? 'Saving to device...' : '↓ Save Artifact Image'}
               </button>
               {downloadError && (
                 <p style={{ fontSize: '12px', color: T.errorText, margin: '8px 0 0' }}>
-                  Couldn't save automatically — try long-pressing the image above to save it.
+                  Press and hold the image directly to save to your photos.
                 </p>
               )}
             </div>
@@ -443,37 +419,31 @@ export default function CheckpointPage() {
         </div>
       )}
 
-      {/* Next clue */}
       {result.message && (
-        <div style={{ background: T.successBg, border: `1px solid ${T.successBorder}`,
-          borderRadius: '10px', padding: '14px', marginBottom: '24px' }}>
-          <p style={{ fontSize: '11px', fontWeight: '600', color: T.success, letterSpacing: '.08em',
-            textTransform: 'uppercase', margin: '0 0 6px' }}>
-            Next clue
-          </p>
-          <p style={{ fontSize: '14px', color: T.successText, lineHeight: '1.65', margin: 0 }}>
-            {result.message}
-          </p>
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: '12px', padding: '16px', marginBottom: '32px' }}>
+          <span style={{ fontSize: '10px', fontWeight: '700', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Next Clue Target</span>
+          <p style={{ fontSize: '14px', color: '#e0e0e0', lineHeight: '1.6', margin: 0 }}>{result.message}</p>
         </div>
       )}
 
       <button
-        onClick={() => result.next ? navigate('/c/' + result.next) : navigate('/complete')}
+        onClick={() => {
+          if (navigator.vibrate) navigator.vibrate(40);
+          setTimeout(() => {
+            result.next ? navigate('/c/' + result.next) : handleFinalizeAdventure()
+          }, 50);
+        }}
         style={btn({ background: T.success, color: T.text })}>
         Continue Adventure →
       </button>
     </div>
   )
 
-  // ── Completing view (awaiting sendCompletion) ───────────────────────────────
+  // ── Completing view ──
   if (view === 'completing') return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center' }}>
-      <div style={{ fontSize: '48px', marginBottom: '20px' }}>🦈</div>
-      <p style={{ color: T.muted, fontSize: '14px' }}>Preparing your rewards...</p>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center', background: T.bg, color: T.text }}>
+      <p style={{ fontSize: '16px', color: T.accent, fontWeight: '600', marginBottom: '8px' }}>Transcribing Journey Logbook...</p>
+      <p style={{ fontSize: '14px', color: T.muted, margin: 0 }}>Compiling rewards and coordinates. Please hold position.</p>
     </div>
   )
-
-  // Fallback (shouldn't normally render)
-  return null
 }

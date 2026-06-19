@@ -38,23 +38,23 @@ export default function GPSGate({ checkpoint, onReady, autoRequest = false }) {
         }
       },
       () => setStatus('denied'),
-      { enableHighAccuracy: true, timeout: 10000 }
+      { 
+        enableHighAccuracy: true, 
+        timeout: 12000, 
+        maximumAge: 0 // Crucial for Android: forces immediate hardware update bypass
+      }
     )
   }
 
-  // ─── Dynamic proximity tiers — relative to THIS checkpoint's own radius,
-  //     not a fixed distance, so it scales correctly whether a checkpoint's
-  //     radius is 50m or 150m. ─────────────────────────────────────────────
   let farMessage = `You are ${distance}m away. You need to be within ${checkpoint.gps_radius_meters}m — get closer!`
   let farColor = '#fbbf24'
 
   if (distance !== null) {
-    const radius = checkpoint.gps_radius_meters || 75
-    if (distance > radius * 5) {
-      farMessage = `❄️ Cold — ${distance}m away. Keep heading toward the location in your clue.`
+    if (distance > 250) {
+      farMessage = `❄️ Status: Cold (${distance}m away). Look closely at your location context clues!`
       farColor = '#60a5fa'
-    } else if (distance > radius * 2) {
-      farMessage = `🌤️ Warm — ${distance}m away. You're heading the right way!`
+    } else if (distance > 100) {
+      farMessage = `🌤️ Status: Warm (${distance}m away). You're heading the right way!`
       farColor = '#f59e0b'
     } else {
       farMessage = `🔥 Getting hot! Only ${distance}m away. Look closely around you.`
