@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import GPSGate from '../components/GPSGate'
 import AudioCluePlayer from '../components/AudioCluePlayer'
 import { getSession, validateCheckpoint, sendCompletion, getHint } from '../lib/api'
@@ -50,7 +50,8 @@ const btn = (custom) => ({
 })
 
 export default function CheckpointPage() {
-  const { id } = useParams()
+  const { slug } = useParams()                    // ← Fixed: use 'slug'
+  const [searchParams] = useSearchParams()        // ← New
   const navigate = useNavigate()
 
   const [session, setSession]   = useState(null)
@@ -110,17 +111,22 @@ export default function CheckpointPage() {
         return
       }
 
-      // Preserve adventure slug from URL
-      const urlAdventure = new URLSearchParams(window.location.search).get('adventure')
-      const currentAdventure = data.adventure?.slug || 'lost-shark-logbook'
+      const adventureParam = searchParams.get('adventure')
 
-      if (currentCp.slug !== id) {
+      console.log('Checkpoint debug:', { 
+        urlSlug: slug, 
+        expectedCp: currentCp.slug, 
+        adventureParam 
+      })
+
+      // Redirect if slug doesn't match
+      if (slug !== currentCp.slug) {
         console.warn('Checkpoint mismatch → redirecting', { 
-          urlSlug: id, 
+          urlSlug: slug, 
           expected: currentCp.slug,
-          adventure: urlAdventure 
+          adventure: adventureParam 
         })
-        const redirectUrl = `/c/${currentCp.slug}${urlAdventure ? `?adventure=${urlAdventure}` : ''}`
+        const redirectUrl = `/c/${currentCp.slug}${adventureParam ? `?adventure=${adventureParam}` : ''}`
         navigate(redirectUrl)
         return
       }
@@ -133,7 +139,7 @@ export default function CheckpointPage() {
     })
 
     return () => { active = false }
-  }, [id, navigate])
+  }, [slug, navigate, searchParams])   // ← Important: depend on slug now
 
   useEffect(() => {
     return () => {
