@@ -12,46 +12,38 @@ const THEME = {
 export default function LandingPage() {
   const navigate = useNavigate()
   const [adventure, setAdventure] = useState(null)
-  const [notFound, setNotFound]   = useState(false)
-  const [checking, setChecking]   = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const [checking, setChecking] = useState(true)
 
   const adventureSlug = new URLSearchParams(window.location.search).get('adventure') || 'lost-shark-logbook'
 
   useEffect(() => {
     let cancelled = false
     setChecking(true)
-    setAdventure(null)
-    setNotFound(false)
 
     async function init() {
       const sid = localStorage.getItem('session_id')
       if (sid) {
         try {
           const sess = await getSession(sid)
-          if (sess && !sess.error && !cancelled) {
-            // Only act on this session if it actually belongs to the
-            // adventure this landing page is for — otherwise fall through
-            // to the normal intro below.
-            if (sess.adventure?.slug === adventureSlug) {
-              if (sess.status === 'COMPLETE') {
-                setChecking(false)
-                navigate('/complete')
-                return
-              }
+          if (cancelled) return
 
-              if (sess.current_checkpoint?.slug) {
-                setChecking(false)
-                navigate('/c/' + sess.current_checkpoint.slug)
-                return
-              }
+          if (sess && !sess.error && sess.adventure?.slug === adventureSlug) {
+            if (sess.status === 'COMPLETE') {
+              navigate('/complete')
+              return
+            }
+            if (sess.current_checkpoint?.slug) {
+              navigate(`/c/${sess.current_checkpoint.slug}?adventure=${adventureSlug}`)
+              return
             }
           }
         } catch (e) {
-          console.error("Session sync issue:", e)
+          console.error("Session resume failed:", e)
         }
       }
 
-      // Load specific theme schema metadata
+      // Load adventure metadata
       try {
         const adv = await getAdventure(adventureSlug)
         if (cancelled) return

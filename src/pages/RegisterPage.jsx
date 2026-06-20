@@ -42,6 +42,7 @@ export default function RegisterPage() {
     setError('')
 
     const adventureSlug = new URLSearchParams(window.location.search).get('adventure') || 'lost-shark-logbook'
+
     const data = await createSession({ ...form, adventure_slug: adventureSlug })
 
     if (data.error) {
@@ -51,11 +52,21 @@ export default function RegisterPage() {
     }
 
     localStorage.setItem('session_id', data.session_id)
+
+    console.log('✅ Register success:', { 
+      adventureSlug, 
+      sessionId: data.session_id, 
+      checkpoint: data.current_checkpoint?.slug 
+    })
+
     if (data.status === 'COMPLETE') {
       navigate('/complete')
       return
     }
-    navigate('/c/' + data.current_checkpoint.slug)
+
+    // IMPORTANT: Preserve adventure slug in next URL
+    const nextUrl = `/c/${data.current_checkpoint.slug}?adventure=${adventureSlug}`
+    navigate(nextUrl)
   }
 
   return (

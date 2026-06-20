@@ -73,7 +73,7 @@ export default function CheckpointPage() {
 
   const bgAudioRef = useRef(null)
 
-  useEffect(() => {
+   useEffect(() => {
     let active = true
     setLoading(true)
     setError('')
@@ -84,33 +84,52 @@ export default function CheckpointPage() {
     setConfirmHintId(null)
 
     const sid = localStorage.getItem('session_id')
-    if (!sid) { navigate('/'); return }
+    if (!sid) { 
+      navigate('/')
+      return 
+    }
 
     getSession(sid).then(data => {
       if (!active) return
-      if (data.error) { navigate('/'); return }
+      if (data.error) { 
+        console.error('getSession error:', data.error)
+        navigate('/')
+        return 
+      }
 
       setSession(data)
 
-      // get-session already matches the player's current checkpoint server-side
-      // (via current_checkpoint_sequence) and returns it as a single object —
-      // there is no adventure.checkpoints array to search. The route param
-      // is the checkpoint's slug (RegisterPage builds /c/<slug>), so confirm
-      // it matches what the server thinks is current; if not (e.g. stale
-      // link to an already-passed checkpoint), bounce home rather than show
-      // a mismatched puzzle.
       const currentCp = data.current_checkpoint
-      if (!currentCp || currentCp.slug !== id) {
+      if (!currentCp) {
         navigate('/')
         return
       }
 
-      // NOTE: get-session doesn't return completed-checkpoint history, so we
-      // can't yet detect "you already solved this one, show the success view
-      // again" on a raw page reload — that needs a backend field. For now
-      // always start at the story view; revisit if that resume case matters.
+      if (data.status === 'COMPLETE') {
+        navigate('/complete')
+        return
+      }
+
+      // Preserve adventure slug from URL
+      const urlAdventure = new URLSearchParams(window.location.search).get('adventure')
+      const currentAdventure = data.adventure?.slug || 'lost-shark-logbook'
+
+      if (currentCp.slug !== id) {
+        console.warn('Checkpoint mismatch → redirecting', { 
+          urlSlug: id, 
+          expected: currentCp.slug,
+          adventure: urlAdventure 
+        })
+        const redirectUrl = `/c/${currentCp.slug}${urlAdventure ? `?adventure=${urlAdventure}` : ''}`
+        navigate(redirectUrl)
+        return
+      }
+
       setView('story')
       setLoading(false)
+    }).catch(err => {
+      console.error('CheckpointPage fetch error:', err)
+      navigate('/')
     })
 
     return () => { active = false }
