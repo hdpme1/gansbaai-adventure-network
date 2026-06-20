@@ -29,18 +29,21 @@ export default function LandingPage() {
         try {
           const sess = await getSession(sid)
           if (sess && !sess.error && !cancelled) {
-            // Force route straight to complete layout if already tagged done
-            if (sess.completed_at) {
-              setChecking(false)
-              navigate('/complete')
-              return
-            }
-            
-            // Resume mid-flight checkpoint if active
-            if (sess.adventure_slug === adventureSlug && sess.current_checkpoint_id) {
-              setChecking(false)
-              navigate('/c/' + sess.current_checkpoint_id)
-              return
+            // Only act on this session if it actually belongs to the
+            // adventure this landing page is for — otherwise fall through
+            // to the normal intro below.
+            if (sess.adventure?.slug === adventureSlug) {
+              if (sess.status === 'COMPLETE') {
+                setChecking(false)
+                navigate('/complete')
+                return
+              }
+
+              if (sess.current_checkpoint?.slug) {
+                setChecking(false)
+                navigate('/c/' + sess.current_checkpoint.slug)
+                return
+              }
             }
           }
         } catch (e) {

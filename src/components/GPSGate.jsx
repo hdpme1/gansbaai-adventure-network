@@ -50,10 +50,12 @@ export default function GPSGate({ checkpoint, onReady, autoRequest = false }) {
   let farColor = '#fbbf24'
 
   if (distance !== null) {
-    if (distance > 250) {
+    const coldThreshold = checkpoint.gps_radius_meters * 5
+    const warmThreshold = checkpoint.gps_radius_meters * 2
+    if (distance > coldThreshold) {
       farMessage = `❄️ Status: Cold (${distance}m away). Look closely at your location context clues!`
       farColor = '#60a5fa'
-    } else if (distance > 100) {
+    } else if (distance > warmThreshold) {
       farMessage = `🌤️ Status: Warm (${distance}m away). You're heading the right way!`
       farColor = '#f59e0b'
     } else {

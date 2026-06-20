@@ -63,6 +63,7 @@ export default function CheckpointPage() {
   const [result, setResult]     = useState({ next: null, message: '', points_earned: 0 })
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState(false)
+  const [artifactModalOpen, setArtifactModalOpen] = useState(false)
 
   // Hint tracking states
   const [hintActive, setHintActive] = useState(null) // null | 1 | 2
@@ -90,26 +91,25 @@ export default function CheckpointPage() {
       if (data.error) { navigate('/'); return }
 
       setSession(data)
-      
-      const currentCp = data.adventure?.checkpoints?.find(c => c.id === id)
-      if (!currentCp) {
+
+      // get-session already matches the player's current checkpoint server-side
+      // (via current_checkpoint_sequence) and returns it as a single object —
+      // there is no adventure.checkpoints array to search. The route param
+      // is the checkpoint's slug (RegisterPage builds /c/<slug>), so confirm
+      // it matches what the server thinks is current; if not (e.g. stale
+      // link to an already-passed checkpoint), bounce home rather than show
+      // a mismatched puzzle.
+      const currentCp = data.current_checkpoint
+      if (!currentCp || currentCp.slug !== id) {
         navigate('/')
         return
       }
 
-      // Sync views
-      const isDone = data.completed_checkpoints?.some(cc => cc.checkpoint_id === id)
-      if (isDone) {
-        const matchingDone = data.completed_checkpoints.find(cc => cc.checkpoint_id === id)
-        setResult({
-          next: matchingDone.next_checkpoint_id,
-          message: currentCp.next_clue || '',
-          points_earned: matchingDone.points_awarded || 0
-        })
-        setView('success')
-      } else {
-        setView('story')
-      }
+      // NOTE: get-session doesn't return completed-checkpoint history, so we
+      // can't yet detect "you already solved this one, show the success view
+      // again" on a raw page reload — that needs a backend field. For now
+      // always start at the story view; revisit if that resume case matters.
+      setView('story')
       setLoading(false)
     })
 
@@ -130,14 +130,15 @@ export default function CheckpointPage() {
     </div>
   )
 
-  const cp = session.adventure?.checkpoints?.find(c => c.id === id)
+  const cp = session.current_checkpoint
   if (!cp) return null
 
   const artifact = cp.artifact
 
-  // Setup background audio dynamically if present
-  if (!bgAudioRef.current && cp.audio_url) {
-    bgAudioRef.current = new Audio(cp.audio_url)
+  // Setup background audio dynamically if present — adventure-level track,
+  // loaded once and held for the whole playthrough (not per-checkpoint).
+  if (!bgAudioRef.current && session.adventure?.ambient_audio_url) {
+    bgAudioRef.current = new Audio(session.adventure.ambient_audio_url)
     bgAudioRef.current.loop = true
     bgAudioRef.current.volume = 0.2
   }
@@ -180,6 +181,7 @@ export default function CheckpointPage() {
       }))
 
       setView('success')
+      setArtifactModalOpen(true)
     } catch (err) {
       setError('Network verification failure. Try submitting your answer again.')
     } finally {
@@ -286,7 +288,7 @@ export default function CheckpointPage() {
 
       {coords && (
         <div style={{ animation: 'artifactPop 0.3s ease forwards' }}>
-          {cp.audio_url && <AudioCluePlayer url={cp.audio_url} />}
+          {cp.clue_audio_url && <AudioCluePlayer url={cp.clue_audio_url} />}
           
           <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: '14px', padding: '20px', marginBottom: '24px' }}>
             <span style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '8px' }}>Cryptic Clue</span>
@@ -379,14 +381,15 @@ export default function CheckpointPage() {
           </p>
           
           {artifact.image_url ? (
-            <img src={artifact.image_url} alt={artifact.name} style={{ 
+            <img src={artifact.image_url} alt={artifact.name} onClick={() => setArtifactModalOpen(true)} style={{ 
               width: '100%', 
               maxHeight: '280px', 
               objectFit: 'contain', 
               borderRadius: '12px', 
               backgroundColor: '#050505',
               border: `1px solid ${T.border}`,
-              marginBottom: '16px'
+              marginBottom: '16px',
+              cursor: 'pointer'
             }} />
           ) : (
             <div style={{ fontSize: '64px', margin: '24px 0' }}>{artifact.icon || '🎁'}</div>
@@ -436,6 +439,47 @@ export default function CheckpointPage() {
         style={btn({ background: T.success, color: T.text })}>
         Continue Adventure →
       </button>
+
+      {/* Fullscreen artifact popup — opens automatically on unlock, reopenable by tapping the inline image */}
+      {artifact && artifactModalOpen && (
+        <div onClick={() => setArtifactModalOpen(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1000,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '24px', animation: 'artifactPop 0.3s ease forwards'
+        }}>
+          <button onClick={(e) => { e.stopPropagation(); setArtifactModalOpen(false) }} style={{
+            position: 'absolute', top: '20px', right: '20px', width: '40px', height: '40px',
+            borderRadius: '50%', background: T.surface, border: `1px solid ${T.border}`, color: T.text,
+            fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            ✕
+          </button>
+
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', width: '100%', textAlign: 'center' }}>
+            <p style={{ fontSize: '11px', fontWeight: '700', color: T.accent, letterSpacing: '.15em', textTransform: 'uppercase', margin: '0 0 20px' }}>
+              ✨ Logbook Artefact Recovered ✨
+            </p>
+
+            {artifact.image_url ? (
+              <img src={artifact.image_url} alt={artifact.name} style={{
+                width: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '12px',
+                border: `1px solid ${T.accent}`, marginBottom: '20px'
+              }} />
+            ) : (
+              <div style={{ fontSize: '96px', margin: '24px 0' }}>{artifact.icon || '🎁'}</div>
+            )}
+
+            <h3 style={{ fontSize: '22px', fontWeight: '600', color: T.text, margin: '0 0 10px' }}>{artifact.name}</h3>
+            <p style={{ fontSize: '14px', color: T.muted, lineHeight: '1.6', margin: '0 0 24px', fontStyle: 'italic' }}>
+              "{artifact.flavour_text}"
+            </p>
+
+            <button onClick={() => setArtifactModalOpen(false)} style={btn({ background: T.accent, color: '#000' })}>
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 
