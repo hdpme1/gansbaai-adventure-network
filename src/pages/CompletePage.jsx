@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession } from '../lib/api'
+import { getActiveSessionId } from '../lib/session'
 
 const T = {
   bg: '#0a0a0a',
@@ -24,7 +25,7 @@ export default function CompletePage() {
     let cancelled = false
 
     async function load() {
-      const sid = localStorage.getItem('session_id')
+      const sid = getActiveSessionId()
       if (!sid) {
         if (!cancelled) { setNotFound(true); setLoading(false) }
         return

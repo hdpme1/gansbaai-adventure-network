@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createSession } from '../lib/api'
+import { saveSession } from '../lib/session'
 
 const THEME = {
   bg: '#0a0a0a',
@@ -42,7 +43,6 @@ export default function RegisterPage() {
     setError('')
 
     const adventureSlug = new URLSearchParams(window.location.search).get('adventure') || 'lost-shark-logbook'
-
     const data = await createSession({ ...form, adventure_slug: adventureSlug })
 
     if (data.error) {
@@ -51,22 +51,12 @@ export default function RegisterPage() {
       return
     }
 
-    localStorage.setItem('session_id', data.session_id)
-
-    console.log('✅ Register success:', { 
-      adventureSlug, 
-      sessionId: data.session_id, 
-      checkpoint: data.current_checkpoint?.slug 
-    })
-
+    saveSession(adventureSlug, data.session_id)
     if (data.status === 'COMPLETE') {
       navigate('/complete')
       return
     }
-
-    // IMPORTANT: Preserve adventure slug in next URL
-    const nextUrl = `/c/${data.current_checkpoint.slug}?adventure=${adventureSlug}`
-    navigate(nextUrl)
+    navigate('/c/' + data.current_checkpoint.slug)
   }
 
   return (

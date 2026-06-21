@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import GPSGate from '../components/GPSGate'
 import AudioCluePlayer from '../components/AudioCluePlayer'
 import { getSession, validateCheckpoint, sendCompletion, getHint } from '../lib/api'
+import { getActiveSessionId } from '../lib/session'
 import AnimatedNumber from '../components/AnimatedNumber'
 
 if (typeof document !== 'undefined' && !document.getElementById('artifact-pop-keyframes')) {
@@ -50,8 +51,7 @@ const btn = (custom) => ({
 })
 
 export default function CheckpointPage() {
-  const { slug } = useParams()                    // ← Fixed: use 'slug'
-  const [searchParams] = useSearchParams()        // ← New
+  const { slug } = useParams()
   const navigate = useNavigate()
 
   const [session, setSession]   = useState(null)
@@ -67,79 +67,61 @@ export default function CheckpointPage() {
   const [artifactModalOpen, setArtifactModalOpen] = useState(false)
 
   // Hint tracking states
-  const [hintActive, setHintActive] = useState(null) // null | 1 | 2
-  const [hintText, setHintText]     = useState('')
+  const [revealedHints, setRevealedHints] = useState({}) // { 1: 'hint text', 2: 'hint text' }
   const [hintLoading, setHintLoading] = useState(false)
   const [confirmHintId, setConfirmHintId] = useState(null) // null | 1 | 2
 
   const bgAudioRef = useRef(null)
 
-   useEffect(() => {
+  useEffect(() => {
     let active = true
     setLoading(true)
     setError('')
     setAnswer('')
     setCoords(null)
-    setHintActive(null)
-    setHintText('')
+    setRevealedHints({})
     setConfirmHintId(null)
 
-    const sid = localStorage.getItem('session_id')
-    if (!sid) { 
-      navigate('/')
-      return 
-    }
+    const sid = getActiveSessionId()
+    if (!sid) { navigate('/'); return }
 
     getSession(sid).then(data => {
       if (!active) return
-      if (data.error) { 
-        console.error('getSession error:', data.error)
-        navigate('/')
-        return 
-      }
+      if (data.error) { navigate('/'); return }
 
       setSession(data)
 
+      // get-session already matches the player's current checkpoint server-side
+      // (via current_checkpoint_sequence) and returns it as a single object —
+      // there is no adventure.checkpoints array to search. The route param
+      // is the checkpoint's slug (RegisterPage builds /c/<slug>), so confirm
+      // it matches what the server thinks is current.
       const currentCp = data.current_checkpoint
+
       if (!currentCp) {
+        // No session-relative checkpoint at all — nothing to self-correct to.
         navigate('/')
         return
       }
 
-      if (data.status === 'COMPLETE') {
-        navigate('/complete')
+      if (currentCp.slug !== slug) {
+        // Stale link, back button, or an old QR code for a checkpoint already
+        // passed — send them to where they actually are instead of all the
+        // way home (no re-registration needed).
+        navigate('/c/' + currentCp.slug)
         return
       }
 
-      const adventureParam = searchParams.get('adventure')
-
-      console.log('Checkpoint debug:', { 
-        urlSlug: slug, 
-        expectedCp: currentCp.slug, 
-        adventureParam 
-      })
-
-      // Redirect if slug doesn't match
-      if (slug !== currentCp.slug) {
-        console.warn('Checkpoint mismatch → redirecting', { 
-          urlSlug: slug, 
-          expected: currentCp.slug,
-          adventure: adventureParam 
-        })
-        const redirectUrl = `/c/${currentCp.slug}${adventureParam ? `?adventure=${adventureParam}` : ''}`
-        navigate(redirectUrl)
-        return
-      }
-
+      // NOTE: get-session doesn't return completed-checkpoint history, so we
+      // can't yet detect "you already solved this one, show the success view
+      // again" on a raw page reload — that needs a backend field. For now
+      // always start at the story view; revisit if that resume case matters.
       setView('story')
       setLoading(false)
-    }).catch(err => {
-      console.error('CheckpointPage fetch error:', err)
-      navigate('/')
     })
 
     return () => { active = false }
-  }, [slug, navigate, searchParams])   // ← Important: depend on slug now
+  }, [slug, navigate])
 
   useEffect(() => {
     return () => {
@@ -183,9 +165,16 @@ export default function CheckpointPage() {
     setError('')
 
     try {
-      const res = await validateCheckpoint(session.id, cp.id, answer.trim(), coords)
-      if (res.error) {
-        setError(res.error)
+      const res = await validateCheckpoint({
+        session_id: session.session_id,
+        checkpoint_slug: cp.slug,
+        answer: answer.trim(),
+        player_lat: coords?.lat,
+        player_lng: coords?.lng,
+      })
+
+      if (!res.success) {
+        setError(res.message || res.error || 'Something went wrong — try again.')
         if (navigator.vibrate) navigator.vibrate([60, 40, 60]) // double buzz for error
         setChecking(false)
         return
@@ -194,15 +183,16 @@ export default function CheckpointPage() {
       if (navigator.vibrate) navigator.vibrate(120) // Long solid success vibration
 
       setResult({
-        next: res.next_checkpoint_id,
-        message: res.next_clue_text || cp.next_clue || '',
-        points_earned: res.points_awarded || 0
+        next: res.is_complete ? null : res.next_checkpoint?.slug,
+        message: res.is_complete ? (res.message || '') : (res.next_clue || cp.next_clue || ''),
+        points_earned: res.points_earned || 0
       })
 
-      // Sync state score immediately
+      // Backend already returns the authoritative new total — use it directly
+      // rather than adding on top of stale client state.
       setSession(prev => ({
         ...prev,
-        total_points: (prev.total_points || 0) + (res.points_awarded || 0)
+        total_points: res.total_points
       }))
 
       setView('success')
@@ -218,16 +208,16 @@ export default function CheckpointPage() {
     if (hintLoading) return
     setHintLoading(true)
     try {
-      const data = await getHint(session.id, cp.id, hintNumber)
+      const data = await getHint({
+        session_id: session.session_id,
+        checkpoint_slug: cp.slug,
+        hint_index: hintNumber - 1, // backend hints are 0-indexed, UI uses hint 1 / hint 2
+      })
       if (data.error) {
-        setError(data.error)
+        setError(data.message || data.error)
       } else {
-        setHintText(data.hint_text)
-        setHintActive(hintNumber)
+        setRevealedHints(prev => ({ ...prev, [hintNumber]: data.hint }))
         setConfirmHintId(null)
-        if (data.running_total_points !== undefined) {
-          setSession(prev => ({ ...prev, total_points: data.running_total_points }))
-        }
       }
     } catch (e) {
       setError('Could not retrieve hint data.')
@@ -239,7 +229,7 @@ export default function CheckpointPage() {
   async function handleFinalizeAdventure() {
     setView('completing')
     try {
-      await sendCompletion(session.id)
+      await sendCompletion(session.session_id)
       if (navigator.vibrate) navigator.vibrate([40, 40, 40])
       // Route direct to summary page
       navigate('/complete')
@@ -341,37 +331,48 @@ export default function CheckpointPage() {
             </button>
           </form>
 
-          {/* Safe Confirm Hint System Deck */}
-          <div style={{ marginTop: '32px', borderTop: `1px solid ${T.border}`, paddingTop: '24px' }}>
-            {hintActive ? (
+          {/* Hint system — each hint reveals independently; revealing #1 still
+              leaves #2's button available (if the checkpoint has one) rather
+              than replacing the whole section. */}
+          <div style={{ marginTop: '32px', borderTop: `1px solid ${T.border}`, paddingTop: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {revealedHints[1] && (
               <div style={{ background: T.surfaceAlt, border: `1px solid ${T.borderMid}`, borderRadius: '12px', padding: '16px', color: '#e0e0e0', fontSize: '14px', lineHeight: '1.6' }}>
-                <span style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '4px' }}>Revealed Hint #{hintActive}</span>
-                {hintText}
+                <span style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '4px' }}>Hint 1</span>
+                {revealedHints[1]}
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Hint 1 */}
-                {confirmHintId === 1 ? (
-                  <button onClick={() => handleRequestHint(1)} disabled={hintLoading} style={btn({ background: T.errorBg, color: T.errorText, border: `1px solid ${T.errorBorder}`, fontSize: '13px' })}>
-                    {hintLoading ? 'Unlocking...' : `Confirm: Deduct ${cp.hint_penalty || 5} Points`}
-                  </button>
-                ) : (
-                  <button onClick={() => setConfirmHintId(1)} style={btn({ background: T.surface, color: T.muted, border: `1px solid ${T.border}`, fontSize: '13px' })}>
-                    Reveal Primary Clue Hint (-{cp.hint_penalty || 5} pts)
-                  </button>
-                )}
+            )}
 
-                {/* Hint 2 */}
-                {confirmHintId === 2 ? (
-                  <button onClick={() => handleRequestHint(2)} disabled={hintLoading} style={btn({ background: T.errorBg, color: T.errorText, border: `1px solid ${T.errorBorder}`, fontSize: '13px' })}>
-                    {hintLoading ? 'Unlocking...' : `Confirm: Deduct ${cp.hint_penalty || 5} Points`}
-                  </button>
-                ) : (
-                  <button onClick={() => setConfirmHintId(2)} style={btn({ background: T.surface, color: T.muted, border: `1px solid ${T.border}`, fontSize: '13px' })}>
-                    Reveal Secondary Map Hint (-{cp.hint_penalty || 5} pts)
-                  </button>
-                )}
+            {revealedHints[2] && (
+              <div style={{ background: T.surfaceAlt, border: `1px solid ${T.borderMid}`, borderRadius: '12px', padding: '16px', color: '#e0e0e0', fontSize: '14px', lineHeight: '1.6' }}>
+                <span style={{ display: 'block', fontSize: '10px', fontWeight: '700', color: T.accent, letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: '4px' }}>Hint 2</span>
+                {revealedHints[2]}
               </div>
+            )}
+
+            {/* Hint 1 button — only while it exists and hasn't been revealed yet */}
+            {!revealedHints[1] && (cp.hints?.length || 0) >= 1 && (
+              confirmHintId === 1 ? (
+                <button onClick={() => handleRequestHint(1)} disabled={hintLoading} style={btn({ background: T.errorBg, color: T.errorText, border: `1px solid ${T.errorBorder}`, fontSize: '13px' })}>
+                  {hintLoading ? 'Unlocking...' : `Confirm: Deduct ${cp.hint_penalty || 5} Points`}
+                </button>
+              ) : (
+                <button onClick={() => setConfirmHintId(1)} style={btn({ background: T.surface, color: T.muted, border: `1px solid ${T.border}`, fontSize: '13px' })}>
+                  Reveal Hint 1 (-{cp.hint_penalty || 5} pts)
+                </button>
+              )
+            )}
+
+            {/* Hint 2 button — only once hint 1 is revealed, a second hint exists, and it isn't revealed yet */}
+            {revealedHints[1] && !revealedHints[2] && (cp.hints?.length || 0) >= 2 && (
+              confirmHintId === 2 ? (
+                <button onClick={() => handleRequestHint(2)} disabled={hintLoading} style={btn({ background: T.errorBg, color: T.errorText, border: `1px solid ${T.errorBorder}`, fontSize: '13px' })}>
+                  {hintLoading ? 'Unlocking...' : `Confirm: Deduct ${cp.hint_penalty || 5} Points`}
+                </button>
+              ) : (
+                <button onClick={() => setConfirmHintId(2)} style={btn({ background: T.surface, color: T.muted, border: `1px solid ${T.border}`, fontSize: '13px' })}>
+                  Reveal Hint 2 (-{cp.hint_penalty || 5} pts)
+                </button>
+              )
             )}
           </div>
         </div>

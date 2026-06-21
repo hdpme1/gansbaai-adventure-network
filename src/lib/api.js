@@ -36,3 +36,9 @@ export function getSession(sessionId) {
     headers: { 'apikey': KEY }
   }).then(r => r.json())
 }
+
+export function listAdventures() {
+  return fetch(BASE + '/list-adventures', {
+    headers: { 'apikey': KEY }
+  }).then(r => r.json())
+}
