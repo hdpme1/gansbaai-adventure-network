@@ -119,7 +119,7 @@ export default function AdminPage() {
 </select>
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
-          <Link to="/admin/edit-adventure" style={{ background: T.surface || '#111', border:'1px solid #333',
+          <Link to="/admin/edit-adventure" style={{ background: '#111', border:'1px solid #333',
             color:'#fff', padding:'7px 14px', borderRadius:'6px', fontSize:'12px',
             fontWeight:'500', textDecoration:'none' }}>
             ✏️ Edit adventure
