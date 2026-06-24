@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getAdminStats } from '../lib/api'
+import { getAdminStats, listAdventures } from '../lib/api'
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-ZA',
@@ -13,23 +13,45 @@ export default function AdminPage() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
 
-  const [adventureSlug, setAdventureSlug] =
-  useState('lost-shark-logbook')
+  const [adventureSlug, setAdventureSlug] = useState('')
+  const [adventures, setAdventures] = useState([])
 
   async function login() {
     setLoading(true); setError('')
-    const data = await getAdminStats(
-  password,
-  adventureSlug
-)
 
-    if (data.error === 'Unauthorized') {
+    // Load the adventure list and the first adventure's stats in parallel —
+    // no point making the admin wait for two sequential round-trips.
+    const [adventureList, firstStats] = await Promise.all([
+      listAdventures(),
+      getAdminStats(password, adventureSlug || 'lost-shark-logbook'),
+    ])
+
+    if (firstStats.error === 'Unauthorized') {
       setError('Incorrect password'); setLoading(false); return
     }
-    if (data.error) {
-      setError(data.error); setLoading(false); return
+    if (firstStats.error) {
+      setError(firstStats.error); setLoading(false); return
     }
-    setStats(data); setLoading(false)
+
+    const list = adventureList.adventures || []
+    setAdventures(list)
+
+    // Default to whichever adventure comes first from the API (ordered by
+    // created_at asc), rather than a hardcoded slug that could stop matching
+    // as new adventures are added.
+    const defaultSlug = list[0]?.slug || 'lost-shark-logbook'
+    setAdventureSlug(defaultSlug)
+
+    // If the default slug differs from what we fetched stats for, refetch —
+    // otherwise use what we already have.
+    if (defaultSlug !== (adventureSlug || 'lost-shark-logbook')) {
+      const data = await getAdminStats(password, defaultSlug)
+      if (!data.error) setStats(data)
+    } else {
+      setStats(firstStats)
+    }
+
+    setLoading(false)
   }
 
   async function refresh() {
@@ -91,16 +113,17 @@ export default function AdminPage() {
     fontSize:'14px'
   }}
 >
-  <option value="lost-shark-logbook">
-    Lost Shark Logbook
-  </option>
-
-  <option value="the-tideline-survey">
-    The Tideline Survey
-  </option>
+  {adventures.map(adv => (
+    <option key={adv.slug} value={adv.slug}>{adv.name}</option>
+  ))}
 </select>
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
+          <Link to="/admin/edit-adventure" style={{ background: T.surface || '#111', border:'1px solid #333',
+            color:'#fff', padding:'7px 14px', borderRadius:'6px', fontSize:'12px',
+            fontWeight:'500', textDecoration:'none' }}>
+            ✏️ Edit adventure
+          </Link>
           <Link to="/admin/new-adventure" style={{ background:'#fff', border:'1px solid #fff',
             color:'#000', padding:'7px 14px', borderRadius:'6px', fontSize:'12px',
             fontWeight:'500', textDecoration:'none' }}>

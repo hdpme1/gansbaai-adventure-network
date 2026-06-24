@@ -42,3 +42,9 @@ export function listAdventures() {
     headers: { 'apikey': KEY }
   }).then(r => r.json())
 }
+
+export const getAdventureFull = (password, slug) =>
+  post('get-adventure-full', { password, slug })
+
+export const updateAdventure = (password, target, id, fields) =>
+  post('update-adventure', { password, target, id, fields })

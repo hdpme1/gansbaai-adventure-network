@@ -274,7 +274,7 @@ export default function CheckpointPage() {
         </div>
       </div>
 
-      <div className="font-serif" style={{ fontSize: '17px', lineHeight: '1.75', color: '#e0e0e0', background: T.surface, padding: '24px', borderRadius: '14px', border: `1px solid ${T.border}`, marginBottom: '32px', fontStyle: 'italic', position: 'relative' }}>
+      <div className="font-serif torn-edge" style={{ fontSize: '18px', lineHeight: '1.75', color: '#e0e0e0', background: T.surface, padding: '24px', borderRadius: '14px', border: `1px solid ${T.border}`, marginBottom: '32px', position: 'relative' }}>
         "{cp.story_snippet}"
       </div>
 
@@ -425,7 +425,7 @@ export default function CheckpointPage() {
             {artifact.name}
           </h3>
           
-          <p style={{ fontSize: '14px', color: T.muted, lineHeight: '1.6', margin: '0 0 20px', fontStyle: 'italic' }}>
+          <p style={{ fontSize: '15px', color: T.muted, lineHeight: '1.6', margin: '0 0 20px' }}>
             "{artifact.flavour_text}"
           </p>
 
@@ -496,7 +496,7 @@ export default function CheckpointPage() {
             )}
 
             <h3 style={{ fontSize: '22px', fontWeight: '600', color: T.text, margin: '0 0 10px' }}>{artifact.name}</h3>
-            <p style={{ fontSize: '14px', color: T.muted, lineHeight: '1.6', margin: '0 0 24px', fontStyle: 'italic' }}>
+            <p style={{ fontSize: '15px', color: T.muted, lineHeight: '1.6', margin: '0 0 24px' }}>
               "{artifact.flavour_text}"
             </p>
 

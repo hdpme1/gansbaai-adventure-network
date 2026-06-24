@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession } from '../lib/api'
 import { getActiveSessionId } from '../lib/session'
@@ -17,7 +17,21 @@ const T = {
 
 export default function CompletePage() {
   const navigate = useNavigate()
-  const [session, setSession] = useState(null)
+  const bgAudioRef = useRef(null)
+
+  // Carry the ambient track through to the completion screen so the
+  // experience doesn't go silent the moment the player finishes.
+  // Mirrors CheckpointPage's pattern — starts on first user interaction
+  // (the final answer submission tap), which satisfies the browser's
+  // autoplay gesture requirement. Stops and cleans up on unmount.
+  useEffect(() => {
+    return () => {
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause()
+        bgAudioRef.current = null
+      }
+    }
+  }, [])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
@@ -44,6 +58,17 @@ export default function CompletePage() {
         }
 
         setSession(data)
+
+        // Start ambient track if one is set for this adventure and the
+        // browser allows it (it will, since the player just tapped "Submit"
+        // to get here — that counts as a gesture for autoplay purposes).
+        if (data.adventure?.ambient_audio_url && !bgAudioRef.current) {
+          bgAudioRef.current = new Audio(data.adventure.ambient_audio_url)
+          bgAudioRef.current.loop = true
+          bgAudioRef.current.volume = 0.2
+          bgAudioRef.current.play().catch(() => {}) // silent fail if blocked
+        }
+
         setLoading(false)
       } catch (e) {
         if (!cancelled) { setNotFound(true); setLoading(false) }
@@ -102,9 +127,9 @@ export default function CompletePage() {
 
       {session.adventure?.story_outro && (
         <div className="font-serif" style={{
-          fontSize: '16px', lineHeight: '1.75', color: '#e0e0e0', background: T.surface,
+          fontSize: '17px', lineHeight: '1.75', color: '#e0e0e0', background: T.surface,
           padding: '24px', borderRadius: '14px', border: `1px solid ${T.border}`,
-          marginBottom: '32px', fontStyle: 'italic'
+          marginBottom: '32px'
         }}>
           "{session.adventure.story_outro}"
         </div>

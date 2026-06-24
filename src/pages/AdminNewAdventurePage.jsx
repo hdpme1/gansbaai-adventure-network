@@ -66,7 +66,7 @@ export default function AdminNewAdventurePage() {
   const [step, setStep] = useState(0)
   const [cpIndex, setCpIndex] = useState(0)   // sub-index 0-6 for checkpoints/artifacts
 
-  const [adventure, setAdventure] = useState({ name: '', slug: '', icon: '🧭', intro_text: '', outro_text: '' })
+  const [adventure, setAdventure] = useState({ name: '', slug: '', icon: '🧭', story_intro: '', story_outro: '' })
   const [slugTouched, setSlugTouched] = useState(false)
   const [numCheckpoints, setNumCheckpoints] = useState(7)
   const [checkpoints, setCheckpoints] = useState(
@@ -340,15 +340,15 @@ export default function AdminNewAdventurePage() {
 
           <Field>
             <label style={label}>Intro text (shown on registration page)</label>
-            <textarea style={textarea} value={adventure.intro_text}
-              onChange={e => setAdventure(a => ({ ...a, intro_text: e.target.value }))}
+            <textarea style={textarea} value={adventure.story_intro}
+              onChange={e => setAdventure(a => ({ ...a, story_intro: e.target.value }))}
               placeholder="A short hook to draw players in..." />
           </Field>
 
           <Field>
             <label style={label}>Story ending (shown on the completion screen and in the completion email)</label>
-            <textarea style={textarea} value={adventure.outro_text}
-              onChange={e => setAdventure(a => ({ ...a, outro_text: e.target.value }))}
+            <textarea style={textarea} value={adventure.story_outro}
+              onChange={e => setAdventure(a => ({ ...a, story_outro: e.target.value }))}
               placeholder="How the story wraps up — what really happened, why it mattered..." />
           </Field>
 
@@ -378,7 +378,7 @@ export default function AdminNewAdventurePage() {
             {checkpoints.map((c, i) => (
               <button key={i} onClick={() => setCpIndex(i)}
                 style={{
-                  flex: 1, padding: '8px 0', borderRadius: '6px', border: 'none',
+                  flex: 1, padding: '8px 0', borderRadius: '6px',
                   background: i === cpIndex ? T.accent : (checkpointComplete(c) ? T.successBg : T.surface),
                   color: i === cpIndex ? '#000' : (checkpointComplete(c) ? T.successText : T.muted),
                   fontSize: '12px', fontWeight: '600', cursor: 'pointer',

@@ -42,6 +42,9 @@ export default function PartnerPage() {
   const [authError, setAuthError] = useState('')
   const [storedPin, setStoredPin] = useState('')
 
+  // Selected adventure filter — null means "all / first one"
+  const [selectedAdventureSlug, setSelectedAdventureSlug] = useState(null)
+
   // Code redemption
   const [codeInput, setCodeInput]     = useState('')
   const [codeLoading, setCodeLoading] = useState(false)
@@ -57,6 +60,7 @@ export default function PartnerPage() {
     }
     setStoredPin(pin)
     setStats(data)
+    setSelectedAdventureSlug(data.adventures?.[0]?.slug || null)
     setLoading(false)
   }
 
@@ -124,11 +128,24 @@ export default function PartnerPage() {
         alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
           <p style={{ fontSize: '12px', color: T.faint, margin: '0 0 3px' }}>Partner dashboard</p>
-          <h1 style={{ fontSize: '20px', fontWeight: '600', margin: '0 0 2px' }}>{stats.partner_name}</h1>
-          {!multiAdventure && stats.adventures?.[0] && (
-            <p style={{ fontSize: '13px', color: T.muted, margin: 0 }}>
-              {stats.adventures[0].name}
-            </p>
+          <h1 style={{ fontSize: '20px', fontWeight: '600', margin: '0 0 6px' }}>{stats.partner_name}</h1>
+          {multiAdventure ? (
+            <select
+              value={selectedAdventureSlug || ''}
+              onChange={e => setSelectedAdventureSlug(e.target.value || null)}
+              style={{ background: T.surface, color: T.text, border: `1px solid ${T.borderMid}`,
+                borderRadius: '6px', padding: '6px 10px', fontSize: '13px' }}
+            >
+              {stats.adventures.map(adv => (
+                <option key={adv.slug} value={adv.slug}>{adv.name}</option>
+              ))}
+            </select>
+          ) : (
+            stats.adventures?.[0] && (
+              <p style={{ fontSize: '13px', color: T.muted, margin: 0 }}>
+                {stats.adventures[0].name}
+              </p>
+            )
           )}
         </div>
         <button onClick={handleRefresh}
@@ -154,28 +171,22 @@ export default function PartnerPage() {
         ))}
       </div>
 
-      {/* Reward offer(s) — supports multi-adventure */}
-      {multiAdventure ? (
-        stats.adventures.map((adv) => (
-          <div key={adv.slug} style={{ background: T.surface, border: `1px solid ${T.border}`,
-            borderRadius: '10px', padding: '14px 16px', marginBottom: '10px' }}>
-            <p style={{ fontSize: '10px', fontWeight: '700', color: T.accent,
-              letterSpacing: '.08em', textTransform: 'uppercase', margin: '0 0 4px' }}>
-              {adv.name}
+      {/* Reward offer — shows selected adventure's reward */}
+      {(() => {
+        const activeAdv = multiAdventure
+          ? stats.adventures.find(a => a.slug === selectedAdventureSlug) || stats.adventures[0]
+          : stats.adventures?.[0]
+        return activeAdv ? (
+          <div style={{ background: T.surface, border: `1px solid ${T.border}`,
+            borderRadius: '10px', padding: '14px 16px', marginBottom: '24px' }}>
+            <p style={{ fontSize: '11px', color: T.faint, margin: '0 0 6px',
+              textTransform: 'uppercase', letterSpacing: '.05em' }}>Your reward offer</p>
+            <p style={{ fontSize: '14px', margin: 0, lineHeight: '1.55' }}>
+              {activeAdv.reward_description}
             </p>
-            <p style={{ fontSize: '14px', margin: 0, lineHeight: '1.55' }}>{adv.reward_description}</p>
           </div>
-        ))
-      ) : (
-        <div style={{ background: T.surface, border: `1px solid ${T.border}`,
-          borderRadius: '10px', padding: '14px 16px', marginBottom: '24px' }}>
-          <p style={{ fontSize: '11px', color: T.faint, margin: '0 0 6px',
-            textTransform: 'uppercase', letterSpacing: '.05em' }}>Your reward offer</p>
-          <p style={{ fontSize: '14px', margin: 0, lineHeight: '1.55' }}>
-            {stats.reward_description}
-          </p>
-        </div>
-      )}
+        ) : null
+      })()}
 
       {/* Recent redemptions */}
       {stats.recent?.length > 0 && (
