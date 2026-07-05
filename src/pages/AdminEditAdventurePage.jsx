@@ -1,30 +1,31 @@
 import { useState, useEffect, useCallback } from 'react'
+import { D, NIGHT_INK, ROUTE_BLUE, UNLOCK_LIME, SIGNAL_CORAL, WEIGHT } from '../lib/theme'
 import { useNavigate } from 'react-router-dom'
 import { listAdventures, getAdventureFull, updateAdventure } from '../lib/api'
 
 // ─── Theme (matches AdminNewAdventurePage) ───────────────────────────────────
 const T = {
-  bg:            '#0a0a0a',
-  surface:       '#111111',
-  surfaceAlt:    '#1a1a1a',
-  border:        '#1f1f1f',
-  borderMid:     '#2a2a2a',
+  bg:            NIGHT_INK,
+  surface:       D.surface,
+  surfaceAlt:    D.surfaceAlt,
+  border:        D.border,
+  borderMid:     D.borderMid,
   text:          '#ffffff',
-  muted:         '#888888',
-  faint:         '#444444',
-  accent:        '#C8953A',
+  muted:         D.muted,
+  faint:         D.faint,
+  accent:        ROUTE_BLUE,
   success:       '#1D9E75',
-  successBg:     '#052e16',
-  successBorder: '#166534',
-  successText:   '#86efac',
-  errorBg:       '#2d1212',
-  errorBorder:   '#991b1b',
-  errorText:     '#fca5a5',
+  successBg:     D.successBg,
+  successBorder: D.successBorder,
+  successText:   UNLOCK_LIME,
+  errorBg:       D.errorBg,
+  errorBorder:   D.errorBorder,
+  errorText:     SIGNAL_CORAL,
 }
 
-const label    = { fontSize: '12px', fontWeight: '600', color: T.muted, marginBottom: '6px', display: 'block' }
-const inputStyle = { width: '100%', background: T.surfaceAlt, border: `1px solid ${T.borderMid}`,
-  borderRadius: '8px', padding: '10px 12px', color: T.text, fontSize: '14px',
+const label    = { fontSize: '12px', fontWeight: '600', color: D.muted, marginBottom: '6px', display: 'block' }
+const inputStyle = { width: '100%', background: D.surfaceAlt, border: `1px solid ${D.borderMid}`,
+  borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '14px',
   boxSizing: 'border-box', marginBottom: '4px' }
 const textarea = { ...inputStyle, resize: 'vertical', minHeight: '80px', lineHeight: '1.5' }
 
@@ -50,7 +51,7 @@ function SaveButton({ onSave }) {
   return (
     <div>
       <button onClick={handle} disabled={state === 'saving'} style={{
-        background: state === 'saved' ? T.successBg : T.accent,
+        background: state === 'saved' ? T.successBg : ROUTE_BLUE,
         border: state === 'saved' ? `1px solid ${T.successBorder}` : 'none',
         color: state === 'saved' ? T.successText : '#000',
         borderRadius: '8px', padding: '9px 20px', fontSize: '13px',
@@ -59,7 +60,7 @@ function SaveButton({ onSave }) {
         {state === 'saving' ? 'Saving...' : state === 'saved' ? '✓ Saved' : 'Save changes'}
       </button>
       {state === 'error' && (
-        <p style={{ fontSize: '12px', color: T.errorText, marginTop: '6px' }}>{errMsg}</p>
+        <p style={{ fontSize: '12px', color: SIGNAL_CORAL, marginTop: '6px' }}>{errMsg}</p>
       )}
     </div>
   )
@@ -69,19 +70,19 @@ function SaveButton({ onSave }) {
 function Section({ title, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ border: `1px solid ${T.border}`, borderRadius: '10px',
+    <div style={{ border: `1px solid ${D.border}`, borderRadius: '10px',
       marginBottom: '12px', overflow: 'hidden' }}>
       <button onClick={() => setOpen(o => !o)} style={{
         width: '100%', display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', padding: '14px 16px', background: T.surface,
-        border: 'none', color: T.text, fontSize: '14px', fontWeight: '600',
+        alignItems: 'center', padding: '14px 16px', background: D.surface,
+        border: 'none', color: '#fff', fontSize: '14px', fontWeight: '600',
         cursor: 'pointer', textAlign: 'left'
       }}>
         {title}
-        <span style={{ color: T.muted, fontSize: '18px', lineHeight: 1 }}>{open ? '−' : '+'}</span>
+        <span style={{ color: D.muted, fontSize: '18px', lineHeight: 1 }}>{open ? '−' : '+'}</span>
       </button>
       {open && (
-        <div style={{ padding: '16px', background: T.bg, borderTop: `1px solid ${T.border}` }}>
+        <div style={{ padding: '16px', background: NIGHT_INK, borderTop: `1px solid ${D.border}` }}>
           {children}
         </div>
       )}
@@ -200,10 +201,10 @@ export default function AdminEditAdventurePage() {
   // ── Auth screen ──
   if (!authed) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', padding: '24px', background: T.bg }}>
+      justifyContent: 'center', padding: '24px', background: NIGHT_INK }}>
       <div style={{ width: '100%', maxWidth: '300px' }}>
-        <p style={{ fontSize: '12px', color: T.faint, margin: '0 0 4px' }}>Gansbaai Adventure Network</p>
-        <h1 style={{ fontSize: '20px', fontWeight: '500', color: T.text, margin: '0 0 24px' }}>
+        <p style={{ fontSize: '12px', color: D.faint, margin: '0 0 4px' }}>Gansbaai Adventure Network</p>
+        <h1 style={{ fontSize: '20px', fontWeight: '500', color: '#fff', margin: '0 0 24px' }}>
           Edit Adventure
         </h1>
         <input type="password" value={password}
@@ -211,9 +212,9 @@ export default function AdminEditAdventurePage() {
           onKeyDown={e => e.key === 'Enter' && handleLogin()}
           placeholder="Admin password"
           style={{ ...inputStyle, marginBottom: '10px' }} />
-        {authError && <p style={{ color: T.errorText, fontSize: '13px', marginBottom: '10px' }}>{authError}</p>}
+        {authError && <p style={{ color: SIGNAL_CORAL, fontSize: '13px', marginBottom: '10px' }}>{authError}</p>}
         <button onClick={handleLogin} disabled={!password || loading}
-          style={{ width: '100%', background: T.text, color: '#000', border: 'none',
+          style={{ width: '100%', background: '#fff', color: '#000', border: 'none',
             padding: '13px', borderRadius: '8px', fontSize: '15px', fontWeight: '500',
             opacity: !password || loading ? 0.5 : 1, cursor: 'pointer' }}>
           {loading ? 'Loading...' : 'Continue'}
@@ -223,19 +224,19 @@ export default function AdminEditAdventurePage() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: T.bg, color: T.text,
+    <div style={{ minHeight: '100vh', background: NIGHT_INK, color: '#fff',
       padding: '24px', maxWidth: '640px', margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
         <button onClick={() => navigate('/admin')} style={{
-          background: 'none', border: `1px solid ${T.border}`, color: T.muted,
+          background: 'none', border: `1px solid ${D.border}`, color: D.muted,
           padding: '7px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer'
         }}>← Admin</button>
         <div style={{ flex: 1 }}>
-          <p style={{ fontSize: '11px', color: T.faint, margin: '0 0 4px' }}>Editing adventure</p>
+          <p style={{ fontSize: '11px', color: D.faint, margin: '0 0 4px' }}>Editing adventure</p>
           <select value={selectedSlug} onChange={e => setSelectedSlug(e.target.value)}
-            style={{ background: T.surface, color: T.text, border: `1px solid ${T.borderMid}`,
+            style={{ background: D.surface, color: '#fff', border: `1px solid ${D.borderMid}`,
               borderRadius: '6px', padding: '6px 10px', fontSize: '14px', fontWeight: '600' }}>
             {adventures.map(a => (
               <option key={a.slug} value={a.slug}>{a.name}</option>
@@ -245,10 +246,10 @@ export default function AdminEditAdventurePage() {
       </div>
 
       {loading && (
-        <p style={{ color: T.muted, textAlign: 'center', padding: '40px 0' }}>Loading...</p>
+        <p style={{ color: D.muted, textAlign: 'center', padding: '40px 0' }}>Loading...</p>
       )}
       {loadError && (
-        <p style={{ color: T.errorText, textAlign: 'center', padding: '40px 0' }}>{loadError}</p>
+        <p style={{ color: SIGNAL_CORAL, textAlign: 'center', padding: '40px 0' }}>{loadError}</p>
       )}
 
       {data && adv && (
@@ -279,7 +280,7 @@ export default function AdminEditAdventurePage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
               <input type="checkbox" id="is_active" checked={adv.is_active}
                 onChange={e => setAdv(a => ({ ...a, is_active: e.target.checked }))} />
-              <label htmlFor="is_active" style={{ fontSize: '13px', color: T.muted, cursor: 'pointer' }}>
+              <label htmlFor="is_active" style={{ fontSize: '13px', color: D.muted, cursor: 'pointer' }}>
                 Adventure is active (visible to players)
               </label>
             </div>
@@ -294,8 +295,8 @@ export default function AdminEditAdventurePage() {
                 <button key={cp.id} onClick={() => setCpIndex(i)} style={{
                   padding: '6px 14px', borderRadius: '6px', fontSize: '13px',
                   fontWeight: '600', cursor: 'pointer', border: 'none',
-                  background: i === cpIndex ? T.accent : T.surface,
-                  color: i === cpIndex ? '#000' : T.muted,
+                  background: i === cpIndex ? ROUTE_BLUE : D.surface,
+                  color: i === cpIndex ? '#000' : D.muted,
                 }}>
                   {cp.sequence}
                 </button>
@@ -383,7 +384,7 @@ export default function AdminEditAdventurePage() {
                 const artIdx = arts.findIndex(a => a.checkpoint_sequence === cps[cpIndex].sequence)
                 const art = arts[artIdx]
                 if (!art) return (
-                  <p style={{ color: T.faint, fontSize: '13px', marginBottom: '16px' }}>
+                  <p style={{ color: D.faint, fontSize: '13px', marginBottom: '16px' }}>
                     No artifact linked to this checkpoint.
                   </p>
                 )

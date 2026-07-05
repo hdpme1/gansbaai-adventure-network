@@ -1,71 +1,85 @@
 /* ─────────────────────────────────────────────────────────────────────────
-   Premium polish layer — texture, type, and motion.
-   Import this ONCE, globally, in src/main.jsx:
+   PLAYCE premium layer — typography, texture, motion.
+   Import once globally in src/main.jsx:
        import './styles/premium.css'
-   Nothing else needs to change for the noise overlay and button press
-   feedback — those apply automatically, app-wide. The font and animation
-   classes are opt-in via className, applied where useful.
    ───────────────────────────────────────────────────────────────────────── */
 
-/* ── Typography: a serif for headings/titles, journal-letter feel ──────────
-   Loaded via @import for simplicity. For slightly faster first paint, you
-   can instead add this as a <link> tag in index.html's <head> — same font,
-   marginal perf gain, not required. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&display=swap');
+/* ── Typography: Inter — the one hard-working family ───────────────────────
+   Black (900) for display headlines. SemiBold (600) for UI. Regular (400) body.
+   Loaded via Google Fonts. For faster first paint, move to <link> in index.html. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap');
 
-.font-serif {
-  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+/* .font-display — large uppercase headlines, Inter Black */
+.font-display {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
 }
 
-/* ── Texture: subtle film-grain noise over the whole app ───────────────────
-   Pure CSS, no image asset. Opacity is intentionally very low (3.5%) —
-   it should read as "matte" rather than be consciously noticeable.
-   pointer-events: none means it never blocks clicks/taps underneath. */
+/* .font-serif kept as alias for any remaining uses — now maps to Inter SemiBold
+   so nothing breaks if there are stray className references during migration */
+.font-serif {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 600;
+}
+
+/* ── Texture: subtle film-grain — works on both light and dark surfaces ─────
+   Slightly more opacity than before since Map Cream is lighter than #0a0a0a. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.035;
-  mix-blend-mode: overlay;
+  opacity: 0.025;
+  mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* ── Deckled / torn left edge for story-snippet quote blocks ───────────────
-   Apply alongside the existing inline borderLeft style — the jagged
-   clip-path makes that gold border read as a rough, hand-torn page edge
-   rather than a straight ruled line. Subtle by design (small zigzag),
-   not meant to look like fully torn paper. */
-.torn-edge {
-  clip-path: polygon(
-    0% 0%, 3% 3%, 0% 6%, 3% 9%, 0% 12%, 3% 15%, 0% 18%, 3% 21%,
-    0% 24%, 3% 27%, 0% 30%, 3% 33%, 0% 36%, 3% 39%, 0% 42%, 3% 45%,
-    0% 48%, 3% 51%, 0% 54%, 3% 57%, 0% 60%, 3% 63%, 0% 66%, 3% 69%,
-    0% 72%, 3% 75%, 0% 78%, 3% 81%, 0% 84%, 3% 87%, 0% 90%, 3% 93%,
-    0% 96%, 2% 100%,
-    100% 100%, 100% 0%
-  );
-}
-
-/* ── Motion: button press feedback, app-wide ────────────────────────────────
-   Applies to every <button> automatically — no per-component changes
-   needed. Disabled buttons don't get the press effect. */
+/* ── Motion: button press feedback ─────────────────────────────────────────
+   Applies to every button automatically. Slightly more springy than before
+   to match the active/energetic brand personality. */
 button {
-  transition: transform 0.12s ease;
+  transition: transform 0.1s ease, opacity 0.1s ease;
 }
 button:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(0.96);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-/* ── Motion: soft fade/slide between views ──────────────────────────────────
-   Apply className="view-transition" + a key prop (e.g. key={view}) to the
-   outer wrapper of each view in a multi-view component. The key forces a
-   fresh DOM node on every view change, which re-triggers this animation. */
+/* ── Motion: view transitions ───────────────────────────────────────────────
+   Apply className="view-transition" + key prop to outer wrapper of each view. */
 @keyframes viewFadeSlide {
-  0%   { opacity: 0; transform: translateY(8px); }
+  0%   { opacity: 0; transform: translateY(10px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 .view-transition {
-  animation: viewFadeSlide 0.32s ease both;
+  animation: viewFadeSlide 0.28s ease both;
+}
+
+/* ── Motion: dramatic reveal (arrival / spot-found moment) ─────────────────
+   Bigger entrance for high-impact screens. */
+@keyframes revealDrop {
+  0%   { opacity: 0; transform: translateY(-16px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.reveal-transition {
+  animation: revealDrop 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── PLAYCE pill buttons — override base style for fully rounded feel ───────
+   Applied via inline style (borderRadius: 100px) — this rule is a safeguard. */
+button.pill {
+  border-radius: 100px;
+}
+
+/* ── Artifact popup animation ───────────────────────────────────────────────
+   Used by the fullscreen artifact modal in CheckpointPage. */
+@keyframes artifactPop {
+  0%   { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
 }

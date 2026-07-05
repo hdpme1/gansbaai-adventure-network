@@ -38,3 +38,21 @@ export function getSessionForAdventure(adventureSlug) {
 export function setActiveSessionId(sessionId) {
   localStorage.setItem(ACTIVE_KEY, sessionId)
 }
+
+// Clears a specific adventure's scoped session AND the active pointer.
+// Call this when a session is confirmed dead (404 from get-session) so the
+// stale UUID doesn't keep overwriting fresh sessions on the next visit.
+export function clearSession(adventureSlug) {
+  localStorage.removeItem(ACTIVE_KEY)
+  if (adventureSlug) localStorage.removeItem(scopedKey(adventureSlug))
+}
+
+// Nuclear option — clears ALL session keys. Used when we don't know
+// which adventure slug is affected (e.g. CheckpointPage gets a 404
+// and doesn't have the adventure slug readily available).
+export function clearAllSessions() {
+  localStorage.removeItem(ACTIVE_KEY)
+  Object.keys(localStorage)
+    .filter(key => key.startsWith('session:'))
+    .forEach(key => localStorage.removeItem(key))
+}

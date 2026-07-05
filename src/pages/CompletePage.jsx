@@ -2,97 +2,72 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSession } from '../lib/api'
 import { getActiveSessionId } from '../lib/session'
+import { D, NIGHT_INK, UNLOCK_LIME, ROUTE_BLUE, SIGNAL_CORAL, WEIGHT } from '../lib/theme'
 
-const T = {
-  bg: '#0a0a0a',
-  surface: '#111111',
-  border: '#1f1f1f',
-  accent: '#C8953A',
-  text: '#ffffff',
-  muted: '#888888',
-  successBg: '#062419',
-  successBorder: '#10593e',
-  successText: '#86efac',
-}
+const pill = (custom = {}) => ({
+  width: '100%', padding: '16px 24px', borderRadius: '100px',
+  fontSize: '15px', fontWeight: WEIGHT.semiBold, letterSpacing: '.06em',
+  textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  ...custom
+})
 
 export default function CompletePage() {
-  const navigate = useNavigate()
+  const navigate  = useNavigate()
   const bgAudioRef = useRef(null)
 
-  // Carry the ambient track through to the completion screen so the
-  // experience doesn't go silent the moment the player finishes.
-  // Mirrors CheckpointPage's pattern — starts on first user interaction
-  // (the final answer submission tap), which satisfies the browser's
-  // autoplay gesture requirement. Stops and cleans up on unmount.
-  useEffect(() => {
-    return () => {
-      if (bgAudioRef.current) {
-        bgAudioRef.current.pause()
-        bgAudioRef.current = null
-      }
-    }
-  }, [])
-  const [loading, setLoading] = useState(true)
+  const [session,  setSession]  = useState(null)
+  const [loading,  setLoading]  = useState(true)
   const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
+    return () => {
+      if (bgAudioRef.current) { bgAudioRef.current.pause(); bgAudioRef.current = null }
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
-
     async function load() {
-      const sid = getActiveSessionId()
-      if (!sid) {
-        if (!cancelled) { setNotFound(true); setLoading(false) }
-        return
-      }
-
+      const sid = new URLSearchParams(window.location.search).get('sid')
+        || getActiveSessionId()
+      if (!sid) { if (!cancelled) { setNotFound(true); setLoading(false) }; return }
       try {
         const data = await getSession(sid)
         if (cancelled) return
-
-        // If the session isn't actually marked COMPLETE, this page was
-        // reached incorrectly (e.g. stale link) — send the player back to
-        // their real current spot rather than showing a blank summary.
-        if (data.error || data.status !== 'COMPLETE') {
-          navigate('/')
-          return
-        }
-
+        if (data.error || data.status !== 'COMPLETE') { navigate('/'); return }
         setSession(data)
-
-        // Start ambient track if one is set for this adventure and the
-        // browser allows it (it will, since the player just tapped "Submit"
-        // to get here — that counts as a gesture for autoplay purposes).
         if (data.adventure?.ambient_audio_url && !bgAudioRef.current) {
           bgAudioRef.current = new Audio(data.adventure.ambient_audio_url)
-          bgAudioRef.current.loop = true
+          bgAudioRef.current.loop   = true
           bgAudioRef.current.volume = 0.2
-          bgAudioRef.current.play().catch(() => {}) // silent fail if blocked
+          bgAudioRef.current.play().catch(() => {})
         }
-
         setLoading(false)
-      } catch (e) {
+      } catch {
         if (!cancelled) { setNotFound(true); setLoading(false) }
       }
     }
-
     load()
     return () => { cancelled = true }
   }, [navigate])
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bg, color: T.muted }}>
-      Compiling your logbook...
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: NIGHT_INK, color: '#8A8A9A' }}>
+      <p>Tallying your score...</p>
     </div>
   )
 
   if (notFound || !session) return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px', textAlign: 'center', background: T.bg, color: T.muted }}>
-      <p style={{ marginBottom: '24px' }}>We couldn't find a completed adventure for this device.</p>
-      <button onClick={() => navigate('/')} style={{
-        background: T.accent, color: '#000', border: 'none', borderRadius: '12px',
-        padding: '14px 28px', fontSize: '15px', fontWeight: '600', cursor: 'pointer'
-      }}>
-        Back to Start
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: '32px',
+      textAlign: 'center', background: NIGHT_INK, color: '#8A8A9A' }}>
+      <p style={{ marginBottom: '24px', fontSize: '15px' }}>
+        No completed Chase found for this device.
+      </p>
+      <button onClick={() => navigate('/')} style={pill({ background: ROUTE_BLUE, color: '#fff', width: 'auto', padding: '14px 32px' })}>
+        Back to PLAYCE
       </button>
     </div>
   )
@@ -100,81 +75,87 @@ export default function CompletePage() {
   const rewards = session.rewards || []
 
   return (
-    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, padding: '40px 24px', maxWidth: '480px', margin: '0 auto' }}>
+    <div className="reveal-transition" style={{ minHeight: '100vh', background: NIGHT_INK,
+      color: '#fff', padding: '40px 24px', maxWidth: '480px', margin: '0 auto' }}>
 
-      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+      {/* Hero */}
+      <div style={{ textAlign: 'center', marginBottom: '32px', paddingTop: '16px' }}>
         <div style={{ fontSize: '56px', marginBottom: '16px' }}>🏆</div>
-        <h1 className="font-serif" style={{ fontSize: '30px', fontWeight: '600', marginBottom: '8px' }}>
-          Logbook Complete
+        <h1 className="font-display" style={{ fontSize: '44px', color: UNLOCK_LIME,
+          margin: '0 0 8px', lineHeight: 1 }}>
+          TOWN<br />CRACKED.
         </h1>
-        <p style={{ fontSize: '15px', color: T.muted }}>
+        <p style={{ fontSize: '15px', color: '#8A8A9A', margin: '8px 0 0' }}>
           {session.adventure?.name}
         </p>
       </div>
 
-      <div style={{
-        textAlign: 'center', marginBottom: '32px', background: T.successBg,
-        border: `1px solid ${T.successBorder}`, padding: '24px', borderRadius: '14px'
-      }}>
-        <span style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: T.successText, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '8px', opacity: 0.8 }}>
-          Final Score
-        </span>
-        <span style={{ fontSize: '40px', fontWeight: '700', color: T.successText }}>
+      {/* Score */}
+      <div style={{ textAlign: 'center', marginBottom: '32px',
+        background: D.surface, border: `1.5px solid ${UNLOCK_LIME}40`,
+        padding: '24px', borderRadius: '16px' }}>
+        <span style={{ display: 'block', fontSize: '11px', fontWeight: WEIGHT.semiBold,
+          color: UNLOCK_LIME, letterSpacing: '.1em', textTransform: 'uppercase',
+          marginBottom: '8px', opacity: 0.7 }}>Final Score</span>
+        <span style={{ fontSize: '48px', fontWeight: WEIGHT.black, color: UNLOCK_LIME }}>
           {session.total_points || 0}
         </span>
-        <span style={{ fontSize: '14px', color: T.successText, opacity: 0.8, marginLeft: '6px' }}>pts</span>
+        <span style={{ fontSize: '14px', color: UNLOCK_LIME, opacity: 0.7, marginLeft: '6px' }}>
+          pts
+        </span>
       </div>
 
+      {/* Story outro */}
       {session.adventure?.story_outro && (
-        <div className="font-serif" style={{
-          fontSize: '17px', lineHeight: '1.75', color: '#e0e0e0', background: T.surface,
-          padding: '24px', borderRadius: '14px', border: `1px solid ${T.border}`,
-          marginBottom: '32px'
-        }}>
+        <div style={{ fontSize: '16px', lineHeight: '1.75', color: '#e0e0e0',
+          background: D.surface, padding: '24px', borderRadius: '14px',
+          border: `1px solid ${D.border}`, marginBottom: '32px' }}>
           "{session.adventure.story_outro}"
         </div>
       )}
 
+      {/* Rewards */}
       {rewards.length > 0 && (
         <div style={{ marginBottom: '32px' }}>
-          <span style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: T.accent, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '12px' }}>
+          <span style={{ display: 'block', fontSize: '11px', fontWeight: WEIGHT.semiBold,
+            color: ROUTE_BLUE, letterSpacing: '.1em', textTransform: 'uppercase',
+            marginBottom: '12px' }}>
             Your Rewards
           </span>
           {rewards.map((r, i) => (
-            <div key={i} style={{
-              background: T.surface, border: `1px solid ${T.border}`, borderRadius: '12px',
-              padding: '16px', marginBottom: '10px'
-            }}>
-              <p style={{ fontSize: '14px', fontWeight: '600', color: T.text, margin: '0 0 4px' }}>
-                {r.partner?.name || 'Partner Reward'}
-              </p>
+            <div key={i} style={{ background: D.surface, border: `1px solid ${D.border}`,
+              borderRadius: '12px', padding: '16px', marginBottom: '10px' }}>
+              <p style={{ fontSize: '14px', fontWeight: WEIGHT.semiBold, color: '#fff',
+                margin: '0 0 4px' }}>{r.partner?.name || 'Partner Reward'}</p>
               {r.partner?.reward_description && (
-                <p style={{ fontSize: '13px', color: T.muted, margin: '0 0 10px', lineHeight: '1.5' }}>
-                  {r.partner.reward_description}
-                </p>
+                <p style={{ fontSize: '13px', color: D.muted, margin: '0 0 10px',
+                  lineHeight: '1.5' }}>{r.partner.reward_description}</p>
               )}
-              <div style={{
-                display: 'inline-block', background: T.bg, border: `1px dashed ${T.accent}`,
-                borderRadius: '8px', padding: '8px 14px', fontSize: '15px', fontWeight: '700',
-                color: T.accent, letterSpacing: '.05em'
-              }}>
+              <div style={{ display: 'inline-block', background: NIGHT_INK,
+                border: `1.5px dashed ${UNLOCK_LIME}`, borderRadius: '8px',
+                padding: '8px 14px', fontSize: '15px', fontWeight: WEIGHT.black,
+                color: UNLOCK_LIME, letterSpacing: '.08em' }}>
                 {r.code}
               </div>
               {r.claimed_at && (
-                <p style={{ fontSize: '11px', color: T.muted, margin: '8px 0 0' }}>Already redeemed</p>
+                <p style={{ fontSize: '11px', color: D.muted, margin: '8px 0 0' }}>
+                  Already redeemed
+                </p>
               )}
             </div>
           ))}
         </div>
       )}
 
-      <button
-        onClick={() => navigate('/')}
-        style={{
-          width: '100%', padding: '16px', background: T.accent, color: '#000', border: 'none',
-          borderRadius: '12px', fontSize: '15px', fontWeight: '600', cursor: 'pointer'
-        }}>
-        Back to Gansbaai Adventures
+      <button onClick={() => navigate('/')}
+        style={pill({ background: ROUTE_BLUE, color: '#fff' })}>
+        Back to PLAYCE
+      </button>
+
+      <button onClick={() => navigate('/collection')}
+        style={pill({ background: 'transparent', color: D.muted,
+          border: `1.5px solid ${D.border}`, marginTop: '12px' })}>
+        My Display Case
       </button>
     </div>
   )
