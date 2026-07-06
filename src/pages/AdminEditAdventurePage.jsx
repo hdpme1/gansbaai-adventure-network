@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { D, NIGHT_INK, ROUTE_BLUE, UNLOCK_LIME, SIGNAL_CORAL, WEIGHT } from '../lib/theme'
 import { useNavigate } from 'react-router-dom'
-import { listAdventures, getAdventureFull, updateAdventure } from '../lib/api'
+import { listAdventures, getAdventureFull, updateAdventure, uploadCollectable } from '../lib/api'
 
 // ─── Theme (matches AdminNewAdventurePage) ───────────────────────────────────
 const T = {
@@ -115,7 +115,10 @@ export default function AdminEditAdventurePage() {
   const [adv, setAdv]               = useState(null)
   const [cps, setCps]               = useState([])    // checkpoints
   const [arts, setArts]             = useState([])    // artifacts
+  const [cols, setCols]             = useState([])    // collectables
   const [cpIndex, setCpIndex]       = useState(0)
+  const [colUploading, setColUploading] = useState(false)
+  const [colUploadError, setColUploadError] = useState('')
 
   // ── Auth ──
   async function handleLogin() {
@@ -142,6 +145,7 @@ export default function AdminEditAdventurePage() {
     setAdv({ ...res.adventure })
     setCps(res.checkpoints.map(cp => ({ ...cp })))
     setArts(res.artifacts.map(a => ({ ...a })))
+    setCols(res.collectables ? res.collectables.map(c => ({ ...c })) : [])
     setCpIndex(0)
   }
 
@@ -189,6 +193,51 @@ export default function AdminEditAdventurePage() {
     })
     if (!res.success) return res.error || 'Save failed'
   }, [password])
+
+  const saveCollectable = useCallback(async (col) => {
+    if (!col.name || !col.model_url) return 'Name and model URL are required.'
+    const res = await updateAdventure(password, 'new-collectable', adv.id, {
+      checkpoint_sequence: col.checkpoint_sequence,
+      name:        col.name,
+      description: col.description,
+      model_url:   col.model_url,
+      rarity:      col.rarity || 'common',
+      id:          col.id,   // if set, update-adventure will update rather than insert
+    })
+    if (!res.success) return res.error || 'Save failed'
+  }, [adv, password])
+
+  async function handleCollectableUpload(file) {
+    if (!file || !file.name.toLowerCase().endsWith('.glb')) {
+      setColUploadError('Only .glb files are accepted.'); return
+    }
+    setColUploading(true); setColUploadError('')
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1]
+      const res = await uploadCollectable({ password, file_data: base64,
+        file_name: file.name, adventure_slug: adv.slug })
+      setColUploading(false)
+      if (res.error) { setColUploadError(res.error); return }
+      const seq = cps[cpIndex]?.sequence
+      setCols(prev => {
+        const idx = prev.findIndex(c => c.checkpoint_sequence === seq)
+        if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, model_url: res.url } : c)
+        return [...prev, { checkpoint_sequence: seq, model_url: res.url, name: '', rarity: 'common' }]
+      })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function setColField(field, value) {
+    const seq = cps[cpIndex]?.sequence
+    if (!seq) return
+    setCols(prev => {
+      const idx = prev.findIndex(c => c.checkpoint_sequence === seq)
+      if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, [field]: value } : c)
+      return [...prev, { checkpoint_sequence: seq, [field]: value, rarity: 'common' }]
+    })
+  }
 
   function setCp(i, key, val) {
     setCps(prev => prev.map((cp, idx) => idx === i ? { ...cp, [key]: val } : cp))
@@ -413,6 +462,78 @@ export default function AdminEditAdventurePage() {
                           borderRadius: '8px', marginBottom: '14px', background: '#050505' }} />
                     )}
                     <SaveButton onSave={() => saveArtifact(art)} />
+                  </Section>
+                )
+              })()}
+
+              {/* ── Collectable for this spot ── */}
+              {(() => {
+                const col = cols.find(c => c.checkpoint_sequence === cps[cpIndex].sequence) || {}
+                const hasModel = !!col.model_url
+                return (
+                  <Section title={`Collectable — Spot ${cps[cpIndex].sequence}${hasModel ? ' ✓' : ' (none)'}`}>
+                    <Field label="Name">
+                      <input style={inputStyle} value={col.name || ''}
+                        onChange={e => setColField('name', e.target.value)}
+                        placeholder="e.g. White Shark, Kelp Fragment" />
+                    </Field>
+                    <Field label="Description">
+                      <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '70px' }}
+                        value={col.description || ''}
+                        onChange={e => setColField('description', e.target.value)} />
+                    </Field>
+                    <Field label="Rarity">
+                      <select style={{ ...inputStyle, width: 'auto' }}
+                        value={col.rarity || 'common'}
+                        onChange={e => setColField('rarity', e.target.value)}>
+                        <option value="common">Common</option>
+                        <option value="rare">Rare</option>
+                        <option value="legendary">Legendary</option>
+                      </select>
+                    </Field>
+                    <Field label=".glb Model">
+                      {hasModel ? (
+                        <div style={{ background: D.surfaceAlt, border: `1px solid ${D.border}`,
+                          borderRadius: '8px', padding: '12px', marginBottom: '14px',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '13px', color: UNLOCK_LIME, wordBreak: 'break-all' }}>
+                            ✓ Model uploaded
+                          </span>
+                          <button onClick={() => setColField('model_url', '')}
+                            style={{ background: 'none', border: 'none', color: D.muted,
+                              fontSize: '12px', cursor: 'pointer', flexShrink: 0 }}>
+                            Replace
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ border: `2px dashed ${D.border}`, borderRadius: '8px',
+                          padding: '20px', textAlign: 'center', marginBottom: '14px',
+                          position: 'relative', cursor: 'pointer' }}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={e => { e.preventDefault(); handleCollectableUpload(e.dataTransfer.files[0]) }}>
+                          <p style={{ fontSize: '13px', color: D.muted, margin: '0 0 6px' }}>
+                            {colUploading ? 'Uploading...' : 'Drop .glb here or tap to browse'}
+                          </p>
+                          <p style={{ fontSize: '11px', color: D.faint, margin: 0 }}>
+                            Compress with gltf-pipeline before uploading
+                          </p>
+                          <input type="file" accept=".glb"
+                            onChange={e => handleCollectableUpload(e.target.files[0])}
+                            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                        </div>
+                      )}
+                      {colUploadError && (
+                        <p style={{ color: SIGNAL_CORAL, fontSize: '12px', marginBottom: '10px' }}>
+                          {colUploadError}
+                        </p>
+                      )}
+                    </Field>
+                    <Field label="Thumbnail URL (optional — screenshot from 3D viewer)">
+                      <input style={inputStyle} value={col.thumbnail_url || ''}
+                        onChange={e => setColField('thumbnail_url', e.target.value)}
+                        placeholder="https://..." />
+                    </Field>
+                    <SaveButton onSave={() => saveCollectable(col)} />
                   </Section>
                 )
               })()}

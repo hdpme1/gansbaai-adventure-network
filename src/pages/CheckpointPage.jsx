@@ -517,12 +517,11 @@ export default function CheckpointPage() {
       {collectable && collectableOpen && (
         <div onClick={() => setCollectableOpen(false)} style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.97)', zIndex: 1001,
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', padding: '24px',
-          animation: 'artifactPop 0.3s ease forwards' }}>
+          overflowY: 'auto', padding: '60px 24px 40px',
+          WebkitOverflowScrolling: 'touch' }}>
 
           <button onClick={e => { e.stopPropagation(); setCollectableOpen(false) }}
-            style={{ position: 'absolute', top: '20px', right: '20px',
+            style={{ position: 'fixed', top: '16px', right: '16px',
               width: '40px', height: '40px', borderRadius: '50%',
               background: D.surface, border: `1px solid ${D.border}`,
               color: '#fff', fontSize: '18px', cursor: 'pointer',
@@ -532,7 +531,7 @@ export default function CheckpointPage() {
           </button>
 
           <div onClick={e => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: '480px', textAlign: 'center' }}>
+            style={{ width: '100%', maxWidth: '480px', margin: '0 auto', textAlign: 'center' }}>
 
             <p style={{ fontSize: '11px', fontWeight: WEIGHT.semiBold, color: ROUTE_BLUE,
               letterSpacing: '.12em', textTransform: 'uppercase', margin: '0 0 12px' }}>
@@ -584,19 +583,21 @@ export default function CheckpointPage() {
       {artifact && artifactModalOpen && (
         <div onClick={() => setArtifactModalOpen(false)} style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', zIndex: 1000,
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', padding: '24px',
-          animation: 'artifactPop 0.3s ease forwards' }}>
+          overflowY: 'auto', padding: '60px 24px 40px',
+          WebkitOverflowScrolling: 'touch' }}>
+
           <button onClick={e => { e.stopPropagation(); setArtifactModalOpen(false) }}
-            style={{ position: 'absolute', top: '20px', right: '20px',
+            style={{ position: 'fixed', top: '16px', right: '16px',
               width: '40px', height: '40px', borderRadius: '50%',
               background: D.surface, border: `1px solid ${D.border}`,
               color: '#fff', fontSize: '18px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1001 }}>
             ✕
           </button>
+
           <div onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '440px', width: '100%', textAlign: 'center' }}>
+            style={{ maxWidth: '440px', width: '100%', margin: '0 auto', textAlign: 'center' }}>
             <p style={{ fontSize: '11px', fontWeight: WEIGHT.semiBold, color: UNLOCK_LIME,
               letterSpacing: '.15em', textTransform: 'uppercase', margin: '0 0 20px' }}>
               Reveal Unlocked

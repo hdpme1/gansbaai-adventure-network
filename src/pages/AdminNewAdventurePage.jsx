@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { D, NIGHT_INK, ROUTE_BLUE, UNLOCK_LIME, SIGNAL_CORAL, WEIGHT } from '../lib/theme'
-import { createAdventure, listPartners, uploadArtifactImage, listRegions } from '../lib/api'
+import { createAdventure, listPartners, uploadArtifactImage, listRegions, uploadCollectable } from '../lib/api'
 
 // ─── Theme ─────────────────────────────────────────────────────────────────────
 const T = {
@@ -23,7 +23,7 @@ const T = {
   errorText:     '#fca5a5',
 }
 
-const STEPS = ['Adventure', 'Spots', 'Artifacts', 'Partners', 'Review']
+const STEPS = ['Adventure', 'Spots', 'Artifacts', 'Collectables', 'Partners', 'Review']
 
 function slugify(s) {
   return s.toLowerCase().trim()
@@ -87,6 +87,14 @@ export default function AdminNewAdventurePage() {
     Array.from({ length: 7 }, (_, i) => emptyArtifact(i + 1))
   )
 
+  // Collectables — one per spot, optional. Each entry is null (no collectable
+  // at that spot) or an object with the collectable's details.
+  const [collectables, setCollectables] = useState(
+    Array.from({ length: 7 }, () => null)
+  )
+  const [collectableUploading, setCollectableUploading] = useState(false)
+  const [collectableUploadError, setCollectableUploadError] = useState('')
+
   // Resize spots/artifacts arrays when the spot count changes,
   // preserving any data already entered for existing positions.
   function resizeSpots(newCount) {
@@ -96,7 +104,9 @@ export default function AdminNewAdventurePage() {
     setArtifacts(arts => Array.from({ length: newCount }, (_, i) =>
       arts[i] ? { ...arts[i], sequence: i + 1 } : emptyArtifact(i + 1)
     ))
-    // Drop partner assignments pointing at spots that no longer exist
+    setCollectables(cols => Array.from({ length: newCount }, (_, i) =>
+      cols[i] || null
+    ))
     setAssignments(a => a.filter(row => row.spot_sequence <= newCount))
     setNumSpots(newCount)
     setCpIndex(0)
@@ -223,6 +233,48 @@ export default function AdminNewAdventurePage() {
   const step3Valid = artifacts.every(artifactComplete)
 
   // ── Submit ────────────────────────────────────────────────────────────────────
+  async function handleCollectableFile(spotIndex, file) {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.glb')) {
+      setCollectableUploadError('Only .glb files are accepted.')
+      return
+    }
+    setCollectableUploading(true)
+    setCollectableUploadError('')
+    try {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        const base64 = e.target.result.split(',')[1]
+        const res = await uploadCollectable({
+          password,
+          file_data:     base64,
+          file_name:     file.name,
+          adventure_slug: adventure.slug || 'new-adventure',
+        })
+        setCollectableUploading(false)
+        if (res.error) {
+          setCollectableUploadError(res.error)
+          return
+        }
+        setCollectables(prev => prev.map((c, i) =>
+          i === spotIndex
+            ? { ...c, model_url: res.url, file_name: file.name }
+            : c
+        ))
+      }
+      reader.readAsDataURL(file)
+    } catch {
+      setCollectableUploading(false)
+      setCollectableUploadError('Upload failed — try again.')
+    }
+  }
+
+  function setCollectable(spotIndex, field, value) {
+    setCollectables(prev => prev.map((c, i) =>
+      i === spotIndex ? { ...(c || {}), [field]: value } : c
+    ))
+  }
+
   async function handleSubmit() {
     setSubmitting(true)
     setSubmitErrors([])
@@ -231,6 +283,12 @@ export default function AdminNewAdventurePage() {
       adventure,
       spots,
       artifacts,
+      // Only include collectables that have at least a name and model_url
+      collectables: collectables
+        .map((c, i) => c && c.name && c.model_url
+          ? { ...c, checkpoint_sequence: i + 1 }
+          : null)
+        .filter(Boolean),
       partners: assignments.filter(a => a.partner_id),
     }
     const res = await createAdventure(payload)
@@ -662,8 +720,117 @@ export default function AdminNewAdventurePage() {
         </div>
       )}
 
-      {/* ════════════════ STEP 3 — Partners ════════════════ */}
+      {/* ════════════════ STEP 3 — Collectables ════════════════ */}
       {step === 3 && (
+        <div>
+          <h2 style={{ fontSize: '18px', fontWeight: WEIGHT.semiBold, margin: '0 0 4px' }}>
+            Collectables
+          </h2>
+          <p style={{ fontSize: '13px', color: T.muted, margin: '0 0 20px', lineHeight: '1.5' }}>
+            Optional — place a 3D collectable at any spot. Players earn it when they solve that spot and can view it in AR in their Display Case. Upload compressed .glb files only.
+          </p>
+
+          {/* Spot selector */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            {spots.map((_, i) => (
+              <button key={i} onClick={() => setCpIndex(i)} style={{
+                padding: '6px 14px', borderRadius: '100px', fontSize: '13px',
+                fontWeight: WEIGHT.semiBold, cursor: 'pointer', border: 'none',
+                background: i === cpIndex ? ROUTE_BLUE : T.surface,
+                color: i === cpIndex ? '#fff' : collectables[i]?.model_url ? UNLOCK_LIME : T.muted,
+              }}>
+                {i + 1}{collectables[i]?.model_url ? ' ✓' : ''}
+              </button>
+            ))}
+          </div>
+
+          {/* Collectable form for selected spot */}
+          <div style={{ background: T.surfaceAlt, border: `1px solid ${T.borderMid}`,
+            borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+
+            <p style={{ fontSize: '12px', fontWeight: WEIGHT.semiBold, color: ROUTE_BLUE,
+              letterSpacing: '.08em', textTransform: 'uppercase', margin: '0 0 14px' }}>
+              Spot {cpIndex + 1} — {collectables[cpIndex]?.model_url ? '✓ Collectable set' : 'No collectable'}
+            </p>
+
+            <label style={label}>Name</label>
+            <input style={input}
+              value={collectables[cpIndex]?.name || ''}
+              onChange={e => setCollectable(cpIndex, 'name', e.target.value)}
+              placeholder="e.g. Seagull, White Shark, Kelp Fragment" />
+
+            <label style={label}>Description (shown in Display Case)</label>
+            <textarea style={textarea}
+              value={collectables[cpIndex]?.description || ''}
+              onChange={e => setCollectable(cpIndex, 'description', e.target.value)}
+              placeholder="A brief flavour line about this collectable..." />
+
+            <label style={label}>Rarity</label>
+            <select style={{ ...input, width: 'auto' }}
+              value={collectables[cpIndex]?.rarity || 'common'}
+              onChange={e => setCollectable(cpIndex, 'rarity', e.target.value)}>
+              <option value="common">Common</option>
+              <option value="rare">Rare</option>
+              <option value="legendary">Legendary</option>
+            </select>
+
+            <label style={label}>.glb Model File</label>
+            {collectables[cpIndex]?.model_url ? (
+              <div style={{ background: T.surface, border: `1px solid ${UNLOCK_LIME}40`,
+                borderRadius: '8px', padding: '12px', marginBottom: '16px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', color: UNLOCK_LIME }}>
+                  ✓ {collectables[cpIndex].file_name || 'Model uploaded'}
+                </span>
+                <button onClick={() => setCollectables(prev => prev.map((c, i) =>
+                  i === cpIndex ? null : c
+                ))} style={{ background: 'none', border: 'none', color: T.muted,
+                  fontSize: '12px', cursor: 'pointer' }}>
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div style={{ border: `2px dashed ${T.borderMid}`, borderRadius: '8px',
+                padding: '24px', textAlign: 'center', marginBottom: '16px',
+                cursor: 'pointer', position: 'relative' }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault()
+                  const file = e.dataTransfer.files[0]
+                  if (file) handleCollectableFile(cpIndex, file)
+                }}>
+                <p style={{ fontSize: '13px', color: T.muted, margin: '0 0 8px' }}>
+                  {collectableUploading ? 'Uploading...' : 'Drop .glb file here or tap to browse'}
+                </p>
+                <input type="file" accept=".glb"
+                  onChange={e => handleCollectableFile(cpIndex, e.target.files[0])}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                <p style={{ fontSize: '11px', color: T.faint, margin: 0 }}>
+                  Compress to under 6MB with gltf-pipeline before uploading
+                </p>
+              </div>
+            )}
+
+            {collectableUploadError && (
+              <p style={{ color: T.errorText, fontSize: '13px', marginBottom: '12px' }}>
+                {collectableUploadError}
+              </p>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+            <button onClick={() => setStep(2)}
+              style={{ ...navBtn, flex: 1, background: T.surface }}>← Back</button>
+            <button onClick={() => setStep(4)}
+              style={{ ...navBtn, flex: 1 }}>
+              Next: Partners →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ STEP 4 — Partners ════════════════ */}
+      {step === 4 && (
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 8px' }}>Partner rewards</h2>
           <p style={{ fontSize: '13px', color: T.muted, marginBottom: '20px' }}>
@@ -722,7 +889,7 @@ export default function AdminNewAdventurePage() {
       )}
 
       {/* ════════════════ STEP 4 — Review ════════════════ */}
-      {step === 4 && (
+      {step === 5 && (
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 16px' }}>Review & create</h2>
 
@@ -821,13 +988,13 @@ export default function AdminNewAdventurePage() {
               ...footerBtn, background: T.text, color: '#000', borderColor: T.text,
               opacity: (step === 0 && !step1Valid) || (step === 1 && !step2Valid) || (step === 2 && !step3Valid) ? 0.3 : 1,
             }}>
-            {step === 3 ? 'Review →' : 'Continue →'}
+            {step === 5 ? 'Review →' : 'Continue →'}
           </button>
         </div>
       )}
-      {step === 4 && (
+      {step === 5 && (
         <div style={{ marginTop: '32px', paddingTop: '20px', borderTop: `1px solid ${T.border}` }}>
-          <button onClick={() => setStep(3)} style={footerBtn}>← Back to partners</button>
+          <button onClick={() => setStep(4)} style={footerBtn}>← Back to partners</button>
         </div>
       )}
     </div>
