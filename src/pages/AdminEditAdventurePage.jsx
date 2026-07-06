@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { D, NIGHT_INK, ROUTE_BLUE, UNLOCK_LIME, SIGNAL_CORAL, WEIGHT } from '../lib/theme'
 import { useNavigate } from 'react-router-dom'
-import { listAdventures, getAdventureFull, updateAdventure, uploadCollectable } from '../lib/api'
+import { listAdventures, getAdventureFull, updateAdventure, uploadCollectable, uploadArtifactImage } from '../lib/api'
 
 // ─── Theme (matches AdminNewAdventurePage) ───────────────────────────────────
 const T = {
@@ -119,6 +119,8 @@ export default function AdminEditAdventurePage() {
   const [cpIndex, setCpIndex]       = useState(0)
   const [colUploading, setColUploading] = useState(false)
   const [colUploadError, setColUploadError] = useState('')
+  const [artImgUploading, setArtImgUploading] = useState(false)
+  const [artImgUploadError, setArtImgUploadError] = useState('')
 
   // ── Auth ──
   async function handleLogin() {
@@ -206,6 +208,32 @@ export default function AdminEditAdventurePage() {
     })
     if (!res.success) return res.error || 'Save failed'
   }, [adv, password])
+
+  async function handleArtifactImageUpload(file, artIdx) {
+    if (!file) return
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowed.includes(file.type)) {
+      setArtImgUploadError('Only JPG, PNG, or WebP images are accepted.')
+      return
+    }
+    setArtImgUploading(true)
+    setArtImgUploadError('')
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1]
+      const res = await uploadArtifactImage({
+        password,
+        content_type: file.type,
+        data_base64:  base64,
+      })
+      setArtImgUploading(false)
+      if (res.error) { setArtImgUploadError(res.error); return }
+      setArts(prev => prev.map((a, i) =>
+        i === artIdx ? { ...a, image_url: res.url } : a
+      ))
+    }
+    reader.readAsDataURL(file)
+  }
 
   async function handleCollectableUpload(file) {
     if (!file || !file.name.toLowerCase().endsWith('.glb')) {
@@ -451,16 +479,47 @@ export default function AdminEditAdventurePage() {
                       <input style={{ ...inputStyle, width: '80px' }} value={art.icon || ''}
                         onChange={e => setArt(artIdx, 'icon', e.target.value)} />
                     </Field>
-                    <Field label="Image URL">
-                      <input style={inputStyle} value={art.image_url || ''}
-                        onChange={e => setArt(artIdx, 'image_url', e.target.value)}
-                        placeholder="https://..." />
+                    <Field label="Image">
+                      {/* Drag-and-drop upload */}
+                      {!art.image_url ? (
+                        <div
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={e => {
+                            e.preventDefault()
+                            handleArtifactImageUpload(e.dataTransfer.files[0], artIdx)
+                          }}
+                          style={{ border: `2px dashed ${D.border}`, borderRadius: '8px',
+                            padding: '20px', textAlign: 'center', marginBottom: '14px',
+                            position: 'relative', cursor: 'pointer' }}>
+                          <p style={{ fontSize: '13px', color: D.muted, margin: '0 0 6px' }}>
+                            {artImgUploading ? 'Uploading...' : 'Drop image here or tap to browse'}
+                          </p>
+                          <p style={{ fontSize: '11px', color: D.faint, margin: 0 }}>
+                            JPG, PNG or WebP
+                          </p>
+                          <input type="file" accept="image/jpeg,image/png,image/webp"
+                            onChange={e => handleArtifactImageUpload(e.target.files[0], artIdx)}
+                            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                        </div>
+                      ) : (
+                        <div style={{ marginBottom: '14px' }}>
+                          <img src={art.image_url} alt={art.name}
+                            style={{ width: '100%', maxHeight: '160px', objectFit: 'contain',
+                              borderRadius: '8px', marginBottom: '8px',
+                              background: '#050505' }} />
+                          <button onClick={() => setArt(artIdx, 'image_url', '')}
+                            style={{ background: 'none', border: `1px solid ${D.border}`,
+                              color: D.muted, borderRadius: '6px', padding: '6px 12px',
+                              fontSize: '12px', cursor: 'pointer' }}>
+                            Replace image
+                          </button>
+                        </div>
+                      )}
+                      {artImgUploadError && (
+                        <p style={{ color: SIGNAL_CORAL, fontSize: '12px',
+                          marginBottom: '10px' }}>{artImgUploadError}</p>
+                      )}
                     </Field>
-                    {art.image_url && (
-                      <img src={art.image_url} alt={art.name}
-                        style={{ width: '100%', maxHeight: '160px', objectFit: 'contain',
-                          borderRadius: '8px', marginBottom: '14px', background: '#050505' }} />
-                    )}
                     <SaveButton onSave={() => saveArtifact(art)} />
                   </Section>
                 )
